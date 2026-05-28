@@ -1,0 +1,13 @@
+# Email analysis (OpenAI + LangChain)
+langchain-core>=0.3.0
+langchain-openai>=0.2.0
+
+# Microsoft Graph / Azure auth
+msal>=1.24.0
+requests>=2.28.0
+
+# GCP (headless auth token persistence)
+google-cloud-secret-manager>=2.16.0
+
+# Environment
+python-dotenv>=1.0.0

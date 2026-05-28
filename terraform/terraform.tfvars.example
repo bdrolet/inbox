@@ -1,0 +1,8 @@
+# Copy to terraform.tfvars (gitignored) and fill in real values.
+# MSAL cache: run scripts/seed_token_cache.py locally after device login, paste JSON string.
+
+client_id        = "azure-app-client-id"
+client_secret    = "azure-app-client-secret"
+tenant_id        = "azure-tenant-id"
+openai_api_key   = "sk-..."
+msal_token_cache = "{\"Account\":{},\"AccessToken\":{},\"RefreshToken\":{},\"IdToken\":{},\"AppMetadata\":{}}"

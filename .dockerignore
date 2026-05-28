@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.terraform/
+*.tfstate
+*.tfstate.*
+.git/
+.env
+.env.*
+*token*.json
+client_secret*.json
+google_*_token.json
+svc-*.json
+terraform/
