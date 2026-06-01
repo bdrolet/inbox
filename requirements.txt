@@ -16,6 +16,9 @@ psycopg[binary]>=3.1
 pgvector>=0.2
 cloud-sql-python-connector[psycopg]>=1.7.0
 
+# Embeddings (Phase 2)
+sentence-transformers>=2.7
+
 # Observability
 opentelemetry-sdk>=1.24
 opentelemetry-exporter-otlp-proto-grpc>=1.24

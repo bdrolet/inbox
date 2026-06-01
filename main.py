@@ -22,14 +22,18 @@ import functions_framework
 from cloudevents.http import CloudEvent
 
 from clients.azure.graph_email_client import GraphEmailClient
+from clients.bge import load_model
 from clients.db import get_conn
 from repo import messages, senders
+from repo.embeddings import retrieve_neighbors
+from services.embedding import embed_and_store, text_for_embedding
 from services.ingestion import fetch, normalize
 
 logger = logging.getLogger(__name__)
 
-# Module-level singleton — initialized once per CF instance, reused on warm invocations.
+# Module-level singletons — initialized once per CF instance, reused on warm invocations.
 _graph_client: GraphEmailClient | None = None
+_model = load_model()  # bge-small-en-v1.5 (~130 MB); adds ~60s to cold start
 
 
 def _get_graph_client() -> GraphEmailClient:
@@ -67,6 +71,14 @@ def process(cloud_event: CloudEvent) -> None:
 
         msg_id = messages.insert(conn, msg)
         senders.upsert(conn, msg["sender"], msg["source"])
+
+        cleaned = text_for_embedding(msg)
+        vec = embed_and_store(conn, msg_id, cleaned, _model)
         conn.commit()
 
-    logger.info(f"Stored {msg_id} — {msg['sender']!r}: {msg['subject']!r}")
+        neighbors = retrieve_neighbors(conn, vec, exclude_id=msg_id)
+
+    logger.info(
+        f"Stored {msg_id} — {msg['sender']!r}: {msg['subject']!r} "
+        f"({len(neighbors)} labeled neighbors)"
+    )
