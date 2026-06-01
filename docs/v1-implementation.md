@@ -222,47 +222,31 @@ LIMIT %s
 
 **`current_label` is always NULL at write time.** LLM-assigned labels never go into this column — only human corrections and confirmations (Phase 4) do. This prevents bad LLM guesses from becoming retrieval examples.
 
-### Docker image
+### Wire into `main.py`
 
-Add a `Dockerfile` for the GKE worker (separate from `Dockerfile.analyze-emails`). Bake the bge model into the image at build time so the pod doesn't download it on cold start:
-
-```dockerfile
-FROM python:3.11-slim
-WORKDIR /app
-ENV PYTHONPATH=/app
-
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Download bge model at build time
-RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('BAAI/bge-small-en-v1.5')"
-
-COPY . .
-CMD ["python", "scripts/worker.py"]
-```
-
-### Wire into `scripts/worker.py`
-
-Load the model once at startup, embed after each DB write:
+Load the model once at module level (reused across warm CF invocations), embed after each DB write:
 
 ```python
 from clients.bge import load_model
 from services.embedding import text_for_embedding, embed_and_store
 from repo.embeddings import retrieve_neighbors
 
-model = load_model()  # once at startup
+_model = load_model()  # once per CF instance
 
-def process(message):
+@functions_framework.cloud_event
+def process(cloud_event):
     ...
-    msg_id = messages.insert(msg)
-    senders.upsert(...)
+    msg_id = messages.insert(conn, msg)
+    senders.upsert(conn, msg["sender"], msg["source"])
 
     cleaned = text_for_embedding(msg)
-    embed_and_store(msg_id, cleaned, model)
+    embed_and_store(msg_id, cleaned, _model)
 
-    neighbors = retrieve_neighbors(model.encode(cleaned), exclude_id=msg_id)
-    log.info(f"Retrieved {len(neighbors)} neighbors for {msg_id}")
+    neighbors = retrieve_neighbors(_model.encode(cleaned), exclude_id=msg_id)
+    logger.info(f"Retrieved {len(neighbors)} neighbors for {msg_id}")
 ```
+
+**Cold start note**: `sentence-transformers` + bge-small-en-v1.5 (~130MB model, ~1GB with PyTorch) adds ~60s to cold starts. This is acceptable for email triage. If latency becomes an issue, the processor can be migrated to Cloud Run with a custom container that bakes the model at build time.
 
 ### `requirements.txt` addition
 
@@ -325,20 +309,20 @@ Temperature: 0.2. Raise on invalid JSON or missing `category`.
 
 ### Secrets
 
-Add `anthropic-api-key` to Secret Manager and inject into the GKE pod. Keep `openai-api-key` until Phase 5.
+Add `anthropic-api-key` to Secret Manager and inject into the processor CF as a secret env var. Keep `openai-api-key` until Phase 5.
 
-### Replace `scripts/worker.py` classification logic
+### Replace Phase 1 logic in `main.py`
 
 ```python
 from handlers.pipeline import run as run_pipeline
 
-model = load_model()  # bge, once at startup
+_model = load_model()  # bge, once per CF instance
 
-def process(message):
-    payload = json.loads(message.data)
-    if payload.get("changeType") != "created":
-        return
-    run_pipeline(payload, model)
+@functions_framework.cloud_event
+def process(cloud_event):
+    data = base64.b64decode(cloud_event.data["message"]["data"]).decode()
+    notification = json.loads(data)
+    run_pipeline(notification, _model)
 ```
 
 ### Remove in this phase
@@ -394,7 +378,7 @@ def notify(message_id: str, subject: str, sender: str, reasoning: str) -> None:
     )
 ```
 
-### Add `/label` route to `handlers/webhook.py`
+### Add `/label` route to `functions/webhook/main.py`
 
 ```python
 @functions_framework.http
@@ -420,48 +404,31 @@ def webhook(request):
     return "", 202
 ```
 
-### New Pub/Sub topic + subscription
+### New Pub/Sub topic + CF event trigger
 
-Add to `terraform/pubsub.tf`:
+Add to `terraform/pubsub.tf` and `terraform/cloud_functions.tf`:
 - `inbox-labels` topic
-- `inbox-labels-pull` pull subscription
+- A second processor CF (or extend `main.py`) with an event trigger on `inbox-labels`
 
-### Update `scripts/worker.py`
+### Update `main.py`
 
-Pull from both subscriptions. Route by topic:
+Route by the originating topic using the CloudEvent source attribute:
 
 ```python
-def process(message, topic):
-    if topic == "inbox-messages-pull":
-        handle_message(message)
-    elif topic == "inbox-labels-pull":
-        handle_label(message)
+@functions_framework.cloud_event
+def process(cloud_event):
+    source = cloud_event.get("source", "")
+    data = base64.b64decode(cloud_event.data["message"]["data"]).decode()
+    payload = json.loads(data)
 
-def handle_label(message):
-    payload = json.loads(message.data)
-    labeling.apply_label(
-        message_id=payload["message_id"],
-        label=payload["label"],
-        source=payload["source"],
-    )
-```
-
-### Update KEDA `ScaledObject`
-
-Watch both subscriptions:
-
-```yaml
-triggers:
-- type: gcp-pubsub
-  metadata:
-    subscriptionName: inbox-messages-pull
-    mode: SubscriptionSize
-    value: "1"
-- type: gcp-pubsub
-  metadata:
-    subscriptionName: inbox-labels-pull
-    mode: SubscriptionSize
-    value: "1"
+    if "inbox-labels" in source:
+        labeling.apply_label(
+            message_id=payload["message_id"],
+            label=payload["label"],
+            source=payload["source"],
+        )
+    else:
+        handle_message(payload)
 ```
 
 ### `services/labeling.py` — `apply_label`
