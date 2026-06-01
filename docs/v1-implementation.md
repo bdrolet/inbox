@@ -185,7 +185,7 @@ Event-driven Cloud Function processor receives messages via Pub/Sub, writes to C
 
 ---
 
-## Phase 2: Embeddings + retrieval — ⬅️ Current
+## Phase 2: Embeddings + retrieval — ✅ Complete
 
 **What it does**: Embed each new message and store it. Implement nearest-neighbor retrieval. Results are logged but not yet used in the prompt.
 
@@ -224,7 +224,7 @@ LIMIT %s
 
 ### Wire into `main.py`
 
-Add module-level model initialization (reused across warm CF invocations) and embedding steps after the DB write:
+Model is lazy-initialized on first invocation (not at module level) so the Cloud Run health check passes before PyTorch loads:
 
 ```python
 import base64, json, logging
@@ -238,7 +238,7 @@ from services.embedding import text_for_embedding, embed_and_store
 from services.ingestion import fetch, normalize
 
 _graph_client = None
-_model = load_model()  # bge-small-en-v1.5, once per CF instance
+_model = None  # lazy — loaded on first invocation, reused on warm instances
 
 
 def _get_graph_client():
@@ -248,6 +248,13 @@ def _get_graph_client():
         client.authenticate_headless()
         _graph_client = client
     return _graph_client
+
+
+def _get_model():
+    global _model
+    if _model is None:
+        _model = load_model()
+    return _model
 
 
 @functions_framework.cloud_event
@@ -273,14 +280,17 @@ def process(cloud_event):
         senders.upsert(conn, msg["sender"], msg["source"])
 
         cleaned = text_for_embedding(msg)
-        embed_and_store(msg_id, cleaned, _model)
+        vec = embed_and_store(conn, msg_id, cleaned, _get_model())
         conn.commit()
 
-    neighbors = retrieve_neighbors(_model.encode(cleaned), exclude_id=msg_id)
+        neighbors = retrieve_neighbors(conn, vec, exclude_id=msg_id)
+
     logger.info(f"Stored {msg_id} — retrieved {len(neighbors)} neighbors")
 ```
 
-**Cold start note**: `sentence-transformers` + bge-small-en-v1.5 (~130MB model, ~1GB with PyTorch) adds ~60s to cold starts. Acceptable for email triage. If latency becomes unacceptable, the processor can be migrated to Cloud Run with a custom container that bakes the model at build time — same code, different runtime.
+**Cold start note**: PyTorch + sentence-transformers uses ~518MB at import time, so the CF requires **1 vCPU / 2Gi memory** (`available_cpu = "1"`, `available_memory = "2Gi"` in `cloud_functions.tf`). First invocation after deploy takes ~60s to load bge-small-en-v1.5. Subsequent warm invocations reuse `_model`.
+
+**Deferred import**: `clients/bge.py` imports `sentence_transformers` inside `load_model()`, not at module level. This keeps the container startup fast so the Cloud Run health check passes before PyTorch loads.
 
 ### `requirements.txt` addition
 
@@ -292,9 +302,11 @@ sentence-transformers>=2.7
 
 Every new message gets an embedding stored in `message_embeddings`. Retrieval runs and logs top-k neighbors. No change to classification behavior.
 
+**Infrastructure note**: `terraform/cloud_functions.tf` sets `available_cpu = "1"` and `available_memory = "2Gi"` for `inbox-process` (required for PyTorch).
+
 ---
 
-## Phase 3: New prompt + categories + tags — Pending
+## Phase 3: New prompt + categories + tags — ⬅️ Current
 
 **What it does**: Switch to Claude Sonnet, new 5-category system, retrieval-augmented prompt. This is the first behavior change visible to the user.
 
@@ -348,15 +360,22 @@ Add `anthropic-api-key` to Secret Manager and inject into the processor CF as a 
 ### Replace Phase 1 logic in `main.py`
 
 ```python
+from clients.bge import load_model
 from handlers.pipeline import run as run_pipeline
 
-_model = load_model()  # bge, once per CF instance
+_model = None  # lazy — same pattern as Phase 2
+
+def _get_model():
+    global _model
+    if _model is None:
+        _model = load_model()
+    return _model
 
 @functions_framework.cloud_event
 def process(cloud_event):
     data = base64.b64decode(cloud_event.data["message"]["data"]).decode()
     notification = json.loads(data)
-    run_pipeline(notification, _model)
+    run_pipeline(notification, _get_model())
 ```
 
 ### Remove in this phase
