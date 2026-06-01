@@ -68,3 +68,21 @@ variable "job_timeout" {
   type        = string
   default     = "86400"
 }
+
+variable "graph_subscription_id" {
+  description = "Graph change-notification subscription ID (set after running clients/graph_subscriptions.py register)"
+  type        = string
+  default     = ""
+}
+
+variable "db_user" {
+  description = "Cloud SQL database username"
+  type        = string
+  default     = "inbox"
+}
+
+variable "db_password" {
+  description = "Cloud SQL database password"
+  type        = string
+  sensitive   = true
+}

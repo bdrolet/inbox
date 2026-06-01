@@ -35,7 +35,7 @@ class GraphEmailClient:
         self.authority = f"https://login.microsoftonline.com/{self.tenant_id}"
         self.graph_endpoint = "https://graph.microsoft.com/v1.0"
         self.access_token = None
-        self.token_cache_file = ".token_cache.json"
+        self.token_cache_file = os.path.expanduser("~/.inbox-token-cache.json")
         # displayName -> folder id (action folders: reply_required, no_action, etc.)
         self._mail_folder_id_cache: Dict[str, str] = {}
         

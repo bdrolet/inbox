@@ -5,6 +5,7 @@ locals {
     "tenant-id"        = var.tenant_id
     "openai-api-key"   = var.openai_api_key
     "msal-token-cache" = var.msal_token_cache
+    "inbox-db-password" = var.db_password
   }
 }
 

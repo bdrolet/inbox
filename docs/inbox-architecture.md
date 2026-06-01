@@ -76,23 +76,23 @@ The only persistent state is the MSAL token cache in Secret Manager (`msal-token
 
 ```
   Microsoft Graph API
-        │  POST — rich notification (message body included)
+        │  POST — change notification
         ▼
   Cloud Function (HTTP trigger)      ← always-on serverless; responds HTTP 202 in <100ms
-  handlers/webhook.py                  handles Graph validation handshake (10s window)
+  functions/webhook/main.py            handles Graph validation handshake (10s window)
   ├── GET  ?validationToken=...  ── echo token
   ├── POST /webhook ── publish payload to Pub/Sub
   └── POST /label   ── receive ntfy.sh button callback → publish to inbox-labels topic
         │
         ▼
-  Cloud Pub/Sub (inbox-messages / inbox-labels)   ← pull subscriptions
+  Cloud Pub/Sub (inbox-messages / inbox-labels)   ← push trigger (CF event trigger)
         │
-        │  KEDA watches undelivered message count
+        │  Pub/Sub pushes to Cloud Function on each message
         ▼
 ┌──────────────────────────────────────────────────────────────────────┐
-│          GKE Deployment — inbox-processor  (KEDA scale 0 → 1)       │
+│          Cloud Function — inbox-process  (Pub/Sub event trigger)     │
 │                                                                      │
-│  scripts/worker.py  ── Pub/Sub pull loop                             │
+│  main.py  ── process(cloud_event)                                    │
 │           │                                                          │
 │           ▼                                                          │
 │  handlers/pipeline.py (16-step orchestrator)                         │
@@ -127,11 +127,11 @@ The only persistent state is the MSAL token cache in Secret Manager (`msal-token
 └──────────────────────────────────────────────────────────────────────┘
           │                                       │
           ▼                                       ▼
-  GKE Postgres + pgvector               Secret Manager
-  (ClusterIP, direct in-cluster access) ├── client-id, client-secret, tenant-id
+  Cloud SQL (Postgres 16 + pgvector)    Secret Manager
+  (managed; Cloud SQL Python Connector) ├── client-id, client-secret, tenant-id
   ├── messages                          ├── anthropic-api-key
-  ├── message_embeddings                └── msal-token-cache
-  ├── classifications
+  ├── message_embeddings                ├── inbox-db-password
+  ├── classifications                   └── msal-token-cache
   ├── senders
   └── tags
 
@@ -139,21 +139,21 @@ The only persistent state is the MSAL token cache in Secret Manager (`msal-token
   clients/graph_subscriptions.renew()     to renew Graph subscription before expiry
 ```
 
-The Cloud Function is the only public-internet-facing component. The GKE Deployment is never publicly exposed — it pulls from Pub/Sub outbound. The Graph validation handshake (10-second window) is handled entirely by the Cloud Function before any GKE pod is involved.
+The webhook Cloud Function is the only public-internet-facing component. The processor Cloud Function is triggered by Pub/Sub push (not publicly exposed). The Graph validation handshake (10-second window) is handled entirely by the webhook CF.
 
-Future ingestion services (`services/sms_ingestion.py`, `services/voicemail_ingestion.py`) publish to the same Pub/Sub topic with a `source` field; the GKE worker routes by source without changes to the pipeline.
+Future ingestion services (`services/sms_ingestion.py`, `services/voicemail_ingestion.py`) publish to the same Pub/Sub topic with a `source` field; the processor routes by source without changes to the pipeline.
 
 ### Cost
 
 | Component | Monthly cost |
 |-----------|-------------|
-| Cloud Function (HTTP trigger) | Free tier; ~$0 |
+| Cloud Function webhook (HTTP trigger) | Free tier; ~$0 |
+| Cloud Function processor (Pub/Sub trigger, ~100 emails/day) | Free tier; ~$0 |
 | Cloud Pub/Sub | Free up to 10GB/month; ~$0 |
-| GKE Deployment pod (~100 emails/day, ~2 min each at 1 vCPU / 2GB, KEDA scale-to-zero) | ~$5.50 |
-| GKE Postgres | Already running; ~$0 incremental |
+| Cloud SQL db-f1-micro (Postgres 16 + pgvector) | ~$10 |
 | Claude Sonnet (~100 emails/day) | ~$15 |
 | Cloud Scheduler (renewal job) | Free tier; ~$0 |
-| **Total new cost** | **~$20.50/month** |
+| **Total new cost** | **~$25/month** |
 
 ---
 
@@ -394,14 +394,15 @@ Each phase is independently deployable. Phases 1–2 preserve existing behavior.
 | Categories | `urgent`, `respond`, `review`, `reference`, `ignore` |
 | Tag system | Orthogonal to categories; multiple per message; controlled vocabulary, extensible; same LLM call |
 | Embedding model | BAAI/bge-small-en-v1.5 — 384d, ~130MB, ~50ms/msg, in-process via sentence-transformers |
-| Vector store | pgvector in the existing GKE Postgres — no separate vector DB |
+| Vector store | pgvector in Cloud SQL Postgres — no separate vector DB |
 | Human-only feedback | `current_label` set only on human confirm/correct; LLM labels never enter the retrieval pool |
 | LLM | Claude Sonnet via Anthropic API; replaces gpt-4o-mini |
-| Worker topology | GKE Deployment + KEDA scale-to-zero; Cloud Function handles public webhook endpoint |
-| Event trigger | Microsoft Graph change notifications with `includeResourceData: true`; message body in payload |
+| Worker topology | Cloud Function (Pub/Sub event trigger); webhook CF handles public endpoint |
+| Database | Cloud SQL Postgres 16 + pgvector (db-f1-micro); Cloud SQL Python Connector |
+| Event trigger | Microsoft Graph change notifications; message ID in payload; worker fetches full message |
 | Notification | ntfy.sh; includes reasoning; action buttons for confirm/correct |
 | Folder actions | All non-urgent categories move to Outlook folders via Graph API (`Mail.ReadWrite` already granted) |
-| Infra split | GCP resources in `inbox/terraform/`; k8s manifests in `~/src/infra/k8s/inbox/` |
+| Infra split | GCP resources in `inbox/terraform/`; no k8s manifests for inbox |
 | Bootstrap requirement | 30–50 hand-labeled messages before Phase 5 go-live |
 
 ---
@@ -472,11 +473,12 @@ CREATE TABLE tags (
 
 ```
 inbox/
+├── main.py                      # Processor Cloud Function entry point (Pub/Sub event trigger)
+│
 ├── scripts/
 │   ├── analyze_emails.py        # existing Cloud Run Job entry point — kept until Phase 5
-│   ├── worker.py                # Phase 1: GKE pod entry point — Pub/Sub pull loop → pipeline
 │   ├── seed_token_cache.py      # one-time MSAL token setup
-│   ├── migrate_db.py            # Phase 1: one-shot schema migration (run as k8s Job)
+│   ├── migrate_db.py            # one-shot schema migration
 │   └── bootstrap_labels.py     # Phase 5: seed message_embeddings with hand-labeled examples
 │
 ├── models/                      # shared types — no logic
@@ -486,30 +488,29 @@ inbox/
 │
 ├── clients/                     # connections to external services and dependencies
 │   ├── azure/
-│   │   └── graph_email_client.py     # existing Graph API wrapper
-│   ├── graph_subscriptions.py   # Phase 1: register() + renew() change-notification subscriptions
-│   ├── db.py                    # Phase 1: psycopg connection management
+│   │   └── graph_email_client.py     # Graph API wrapper; token cached at ~/.inbox-token-cache.json
+│   ├── graph_subscriptions.py   # register() + renew() change-notification subscriptions
+│   ├── db.py                    # psycopg connection; Cloud SQL Python Connector in production
 │   ├── bge.py                   # Phase 2: sentence-transformers model load + encode()
 │   ├── claude.py                # Phase 3: Anthropic SDK call + response parsing
 │   └── ntfy.py                  # Phase 4: push notification via ntfy.sh
 │
 ├── repo/                        # read/write to app-owned database tables
-│   ├── schema.sql               # Phase 1: CREATE TABLE + CREATE INDEX statements
-│   ├── messages.py              # Phase 1: insert(), exists(), get()
-│   ├── classifications.py       # Phase 1: insert()
-│   ├── senders.py               # Phase 1: upsert(), get()
+│   ├── schema.sql               # CREATE TABLE + CREATE INDEX statements
+│   ├── messages.py              # insert(), exists(), get()
+│   ├── classifications.py       # insert()
+│   ├── senders.py               # upsert(), get()
 │   ├── embeddings.py            # Phase 2: store_embedding(), retrieve_neighbors(), apply_label()
 │   └── tags.py                  # Phase 3: ensure_exists()
 │
 ├── services/                    # business logic — one concern per file
-│   ├── ingestion.py             # Phase 1: normalize Graph notification → Message + upsert sender
+│   ├── ingestion.py             # normalize Graph notification → Message + upsert sender
 │   ├── embedding.py             # Phase 2: text_for_embedding(), strip reply chains, embed + store
 │   ├── classification.py        # Phase 3: retrieve neighbors, build prompt, call Claude, write result
 │   ├── labeling.py              # Phase 4: apply_label() — human correction/confirmation path
 │   └── archiving.py             # Phase 4: move_to_folder(msg, folder_name) via Graph API
 │
 ├── handlers/                    # orchestration across multiple services
-│   ├── webhook.py               # Phase 1: Cloud Function — GET validation, POST → Pub/Sub, POST /label → inbox-labels
 │   ├── pipeline.py              # Phase 3: 16-step orchestrator
 │   └── actions/
 │       ├── dispatch.py          # Phase 4: route by category
@@ -519,13 +520,19 @@ inbox/
 │       ├── reference.py         # Phase 4: move to Archive
 │       └── ignore.py            # Phase 4: move to Archive
 │
-├── terraform/                   # GCP resources (Cloud Functions, Pub/Sub, Scheduler, Secrets)
+├── functions/                   # standalone Cloud Function entry points
+│   ├── webhook/                 # HTTP trigger: Graph validation + Pub/Sub publish
+│   └── renew/                   # HTTP trigger: Graph subscription renewal
+│
+├── terraform/                   # GCP resources (Cloud Functions, Pub/Sub, Cloud SQL, Scheduler, Secrets)
 │   ├── main.tf
-│   ├── cloud_functions.tf       # Phase 1: NEW
-│   ├── pubsub.tf                # Phase 1: NEW (inbox-messages + inbox-labels)
-│   ├── cloud_run_job.tf         # existing — removed in Phase 5
-│   ├── scheduler.tf             # existing + Phase 1: subscription renewal job
-│   ├── secrets.tf               # existing + Phase 3: anthropic-api-key
+│   ├── cloud_functions.tf       # webhook CF + renew CF + processor CF
+│   ├── cloudsql.tf              # Cloud SQL Postgres 16 instance
+│   ├── pubsub.tf                # inbox-messages topic
+│   ├── cloud_run_job.tf         # existing Cloud Run Job — removed in Phase 5
+│   ├── scheduler.tf             # daily Cloud Run Job + subscription renewal job
+│   ├── secrets.tf               # Secret Manager secrets
+│   ├── iam.tf                   # service account bindings
 │   ├── registry.tf
 │   ├── variables.tf
 │   ├── outputs.tf
@@ -535,17 +542,7 @@ inbox/
 ├── docs/
 │   └── inbox-architecture.md   # this file
 │
-├── Dockerfile                   # Phase 2: GKE worker image (bge model baked in)
 ├── Dockerfile.analyze-emails    # existing Cloud Run Job — removed in Phase 5
 ├── requirements.txt
 └── .dockerignore
-```
-
-K8s manifests live in `~/src/infra/k8s/inbox/`:
-
-```
-infra/k8s/inbox/
-├── deployment.yaml          # GKE Deployment — inbox-processor (cmd: scripts/worker.py)
-├── keda-scaledobject.yaml   # scales on inbox-messages-pull + inbox-labels-pull depth
-└── pgvector-init-job.yaml   # one-shot: CREATE EXTENSION IF NOT EXISTS vector
 ```

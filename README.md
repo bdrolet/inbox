@@ -6,13 +6,13 @@ See [docs/inbox-architecture.md](docs/inbox-architecture.md) for the full design
 
 ## How it works
 
-New emails trigger a Microsoft Graph change notification → Cloud Function → Pub/Sub → GKE worker. The worker normalizes the message, embeds it, retrieves similar past messages with human-confirmed labels, builds a prompt with that context, and calls Claude Sonnet to classify it. The result drives a folder move in Outlook and (for urgent messages) a push notification via ntfy.sh.
+New emails trigger a Microsoft Graph change notification → Cloud Function (webhook) → Pub/Sub → Cloud Function (processor). The processor normalizes the message, embeds it, retrieves similar past messages with human-confirmed labels, builds a prompt with that context, and calls Claude Sonnet to classify it. The result drives a folder move in Outlook and (for urgent messages) a push notification via ntfy.sh.
 
 **Categories**: `urgent` · `respond` · `review` · `reference` · `ignore`
 
 ## Current state
 
-The repo currently runs a Cloud Run Job that fetches all inbox emails daily and classifies them with GPT-4o-mini. The architecture above is being built out in phases — see [docs/inbox-architecture.md](docs/inbox-architecture.md) for the migration plan.
+Phase 1 complete: event-driven Cloud Function processor receiving live emails, writing to Cloud SQL. The existing Cloud Run Job (`scripts/analyze_emails.py`) runs daily as a fallback and is removed in Phase 5.
 
 ## Project structure
 
@@ -21,13 +21,13 @@ clients/          # External service connections (Graph API, DB, Claude, bge mod
 models/           # Shared type definitions (Message, Category, Classification)
 repo/             # Database read/write (messages, classifications, embeddings, senders, tags)
 services/         # Business logic (ingestion, embedding, classification, labeling, archiving)
-handlers/         # Multi-service orchestration (webhook, pipeline, per-category actions)
+handlers/         # Multi-service orchestration (pipeline, per-category actions)
+functions/        # Cloud Function entry points (webhook, renew)
 scripts/          # Entry points and one-off jobs
-terraform/        # GCP infrastructure (Cloud Functions, Pub/Sub, Scheduler, Secrets)
+main.py           # Processor Cloud Function entry point (Pub/Sub triggered)
+terraform/        # GCP infrastructure (Cloud Functions, Pub/Sub, Cloud SQL, Scheduler, Secrets)
 docs/             # Architecture and design docs
 ```
-
-K8s manifests for the GKE worker live in `~/src/infra/k8s/inbox/`.
 
 ## Local development
 
@@ -52,12 +52,21 @@ pip install -r requirements.txt
 CLIENT_ID=
 CLIENT_SECRET=
 TENANT_ID=
-REDIRECT_URI=http://localhost:8080/callback   # optional, this is the default
-SCOPES=https://graph.microsoft.com/Mail.Read https://graph.microsoft.com/Mail.ReadWrite https://graph.microsoft.com/User.Read
 
 # LLM
-OPENAI_API_KEY=      # current (Cloud Run Job)
-ANTHROPIC_API_KEY=   # target (GKE worker, Phase 3+)
+OPENAI_API_KEY=      # current (Cloud Run Job fallback)
+ANTHROPIC_API_KEY=   # target (Phase 3+)
+
+# Database — local dev uses direct psycopg; production uses Cloud SQL Python Connector
+# For local dev: set POSTGRES_* and leave CLOUD_SQL_CONNECTION_NAME unset
+POSTGRES_HOST=localhost
+POSTGRES_PORT=5432
+POSTGRES_USER=
+POSTGRES_PASSWORD=
+POSTGRES_DB=app
+
+# For production / testing against Cloud SQL directly:
+# CLOUD_SQL_CONNECTION_NAME=bens-project-462804:us-central1:inbox
 
 # Leave unset for local interactive mode; set to your GCP project ID for headless mode
 # GCP_PROJECT_ID=
@@ -72,7 +81,7 @@ python scripts/seed_token_cache.py > /tmp/msal_cache.json
 # Follow the device code prompt in your browser
 ```
 
-For local development, the token is cached in `.token_cache.json`. For Cloud Run, seed it into Secret Manager:
+The token is cached at `~/.inbox-token-cache.json` for local development. Seed it into Secret Manager for production:
 
 ```bash
 gcloud secrets versions add msal-token-cache --data-file=/tmp/msal_cache.json
@@ -96,24 +105,25 @@ Infrastructure is managed with Terraform. Secrets are stored in GCP Secret Manag
 ```bash
 cd terraform
 cp terraform.tfvars.example terraform.tfvars
-# Fill in terraform.tfvars with real values
+# Fill in terraform.tfvars with real values (including db_password)
 terraform init
 terraform apply
 ```
 
-### Deploy a new image
+After apply, run the schema migration:
 
 ```bash
-# Build and push to Artifact Registry
+CLOUD_SQL_CONNECTION_NAME=bens-project-462804:us-central1:inbox \
+  POSTGRES_USER=inbox POSTGRES_PASSWORD=<password> POSTGRES_DB=app \
+  python scripts/migrate_db.py
+```
+
+### Deploy a new Cloud Run Job image (legacy fallback)
+
+```bash
 IMAGE=$(terraform -chdir=terraform output -raw artifact_registry_url)/analyze-emails:latest
 docker build -f Dockerfile.analyze-emails -t $IMAGE .
 docker push $IMAGE
-```
-
-The Cloud Scheduler triggers the job daily at 8 AM EST. To run immediately:
-
-```bash
-gcloud run jobs execute email-analysis --region us-central1
 ```
 
 ### Terraform variables
@@ -126,9 +136,10 @@ gcloud run jobs execute email-analysis --region us-central1
 | `tenant_id` | Azure tenant ID |
 | `openai_api_key` | OpenAI API key |
 | `msal_token_cache` | Serialized MSAL token cache JSON |
+| `db_user` | Cloud SQL username (default: `inbox`) |
+| `db_password` | Cloud SQL password |
 | `region` | GCP region (default: `us-central1`) |
-| `schedule_cron` | Cron expression (default: `0 8 * * *`) |
-| `schedule_timezone` | Timezone (default: `America/New_York`) |
+| `graph_subscription_id` | Graph change-notification subscription ID |
 
 ## Architecture
 
