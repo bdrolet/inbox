@@ -22,14 +22,19 @@ import functions_framework
 from cloudevents.http import CloudEvent
 
 from clients.azure.graph_email_client import GraphEmailClient
+from clients.bge import load_model
 from clients.db import get_conn
 from repo import messages, senders
+from repo.embeddings import retrieve_neighbors
+from services.embedding import embed_and_store, text_for_embedding
 from services.ingestion import fetch, normalize
 
 logger = logging.getLogger(__name__)
 
-# Module-level singleton — initialized once per CF instance, reused on warm invocations.
+# Module-level singletons — lazy-initialized on first invocation, reused on warm instances.
+# Lazy init keeps container startup fast so Cloud Run health checks pass before model loads.
 _graph_client: GraphEmailClient | None = None
+_model = None
 
 
 def _get_graph_client() -> GraphEmailClient:
@@ -40,6 +45,13 @@ def _get_graph_client() -> GraphEmailClient:
             raise RuntimeError("Graph API headless authentication failed")
         _graph_client = client
     return _graph_client
+
+
+def _get_model():
+    global _model
+    if _model is None:
+        _model = load_model()
+    return _model
 
 
 @functions_framework.cloud_event
@@ -67,6 +79,14 @@ def process(cloud_event: CloudEvent) -> None:
 
         msg_id = messages.insert(conn, msg)
         senders.upsert(conn, msg["sender"], msg["source"])
+
+        cleaned = text_for_embedding(msg)
+        vec = embed_and_store(conn, msg_id, cleaned, _get_model())
         conn.commit()
 
-    logger.info(f"Stored {msg_id} — {msg['sender']!r}: {msg['subject']!r}")
+        neighbors = retrieve_neighbors(conn, vec, exclude_id=msg_id)
+
+    logger.info(
+        f"Stored {msg_id} — {msg['sender']!r}: {msg['subject']!r} "
+        f"({len(neighbors)} labeled neighbors)"
+    )
