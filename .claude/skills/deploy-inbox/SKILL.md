@@ -1,5 +1,5 @@
 ---
-name: deploying-inbox-processor
+name: deploy-inbox
 description: Use when the user wants to deploy, release, or push code changes to the inbox-process Cloud Function, rebuild the processor after changing main.py or any file under clients/, repo/, services/, handlers/, or models/.
 metadata:
   depends-on:
