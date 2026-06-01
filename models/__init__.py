@@ -1,4 +1,4 @@
-# Models package - shared data structures
 from .email import Email
+from .message import Message
 
-__all__ = ["Email"]
+__all__ = ["Email", "Message"]

@@ -6,38 +6,17 @@ Full architecture context: [inbox-architecture.md](inbox-architecture.md)
 
 ---
 
-## Phase 1: Schema + storage layer
+## Phase 1: Schema + storage layer — ✅ Complete
 
-**What it does**: Stand up the event-driven GKE worker and database. Classification logic is unchanged (still gpt-4o-mini, 8 categories) — the goal is infrastructure only.
+**What it does**: Stand up the event-driven Cloud Function processor and Cloud SQL database. Classification logic is unchanged (still gpt-4o-mini, 8 categories) — the goal is infrastructure only.
 
-### 1. Enable pgvector on GKE Postgres
+### 1. Cloud SQL (managed Postgres 16 + pgvector)
 
-Run once against the existing Postgres instance:
-
-```yaml
-# infra/k8s/inbox/pgvector-init-job.yaml
-apiVersion: batch/v1
-kind: Job
-metadata:
-  name: pgvector-init
-  namespace: apps
-spec:
-  template:
-    spec:
-      containers:
-      - name: pgvector-init
-        image: postgres:16
-        command: ["psql"]
-        args: ["$(DATABASE_URL)", "-c", "CREATE EXTENSION IF NOT EXISTS vector;"]
-        envFrom:
-        - secretRef:
-            name: postgres-credentials
-      restartPolicy: Never
-```
+Provisioned via `terraform/cloudsql.tf` (db-f1-micro, 10GB SSD, `us-central1`). pgvector is enabled as part of the schema migration — no separate init job needed; Cloud SQL ships the extension pre-installed.
 
 ### 2. Write the schema
 
-`repo/schema.sql` — run via `scripts/migrate_db.py` as a Kubernetes Job:
+`repo/schema.sql` — run via `scripts/migrate_db.py` after `terraform apply`:
 
 ```sql
 CREATE EXTENSION IF NOT EXISTS vector;
@@ -97,154 +76,97 @@ CREATE TABLE IF NOT EXISTS tags (
 );
 ```
 
-### 3. New files to write
+### 3. New / updated files
 
 | File | What it does |
 |------|-------------|
-| `clients/db.py` | psycopg connection pool; reads `DATABASE_URL` from env |
-| `models/message.py` | `Message` TypedDict with all fields from the common shape |
-| `services/ingestion.py` | `normalize(raw_notification) → Message`; extracts fields from Graph rich notification payload |
-| `repo/messages.py` | `insert(msg)`, `exists(source, external_id)`, `get(id)` |
-| `repo/classifications.py` | `insert(message_id, category, confidence, alternatives, tags, reasoning, model, prompt_version, source)` |
-| `repo/senders.py` | `upsert(identifier, source)`, `get(identifier, source)` |
-| `handlers/webhook.py` | Cloud Function entry point — see below |
-| `scripts/worker.py` | GKE pod entry point — see below |
-| `scripts/migrate_db.py` | Runs `repo/schema.sql` against the DB |
-| `clients/graph_subscriptions.py` | `register(notification_url)`, `renew(subscription_id)` |
+| `main.py` | Processor Cloud Function entry point (`process(cloud_event)`) — Pub/Sub event trigger |
+| `clients/db.py` | psycopg connection; uses Cloud SQL Python Connector when `CLOUD_SQL_CONNECTION_NAME` is set, falls back to direct connect for local dev |
+| `models/message.py` | `Message` TypedDict |
+| `services/ingestion.py` | `normalize(email, raw) → Message`; `fetch(message_id, client)` |
+| `repo/messages.py` | `insert(conn, msg)`, `exists(conn, source, external_id)`, `get(conn, id)` |
+| `repo/classifications.py` | `insert(...)` |
+| `repo/senders.py` | `upsert(conn, identifier, source)`, `get(...)` |
+| `functions/webhook/main.py` | HTTP Cloud Function — GET validates, POST publishes to Pub/Sub |
+| `functions/renew/main.py` | HTTP Cloud Function — renews Graph subscription |
+| `scripts/migrate_db.py` | Runs `repo/schema.sql` against Cloud SQL |
+| `clients/graph_subscriptions.py` | `register(client, notification_url)`, `renew(client, subscription_id)` |
 
-### 4. `handlers/webhook.py` — Cloud Function
+### 4. `main.py` — processor Cloud Function entry point
 
 ```python
+import base64, json, logging
 import functions_framework
-from google.cloud import pubsub_v1
-import json, os
+from clients.azure.graph_email_client import GraphEmailClient
+from clients.db import get_conn
+from repo import messages, senders
+from services.ingestion import fetch, normalize
 
-publisher = pubsub_v1.PublisherClient()
-TOPIC = publisher.topic_path(os.environ["GCP_PROJECT_ID"], "inbox-messages")
+_graph_client = None  # module-level singleton; reused on warm invocations
 
-@functions_framework.http
-def webhook(request):
-    # Graph subscription validation handshake
-    token = request.args.get("validationToken")
-    if token:
-        return token, 200, {"Content-Type": "text/plain"}
+def _get_graph_client():
+    global _graph_client
+    if _graph_client is None:
+        client = GraphEmailClient()
+        client.authenticate_headless()
+        _graph_client = client
+    return _graph_client
 
-    publisher.publish(TOPIC, request.get_data())
-    return "", 202
+@functions_framework.cloud_event
+def process(cloud_event):
+    data = base64.b64decode(cloud_event.data["message"]["data"]).decode()
+    notification = json.loads(data)
+    message_id = notification.get("resourceData", {}).get("id")
+    if not message_id:
+        return
+    email = fetch(message_id, _get_graph_client())
+    if email is None:
+        return
+    msg = normalize(email, raw=notification)
+    with get_conn() as conn:
+        if messages.exists(conn, msg["source"], msg["external_id"]):
+            return
+        msg_id = messages.insert(conn, msg)
+        senders.upsert(conn, msg["sender"], msg["source"])
+        conn.commit()
 ```
 
-### 5. `scripts/worker.py` — GKE pod entry point
+### 5. `clients/db.py` — Cloud SQL connector
 
 ```python
-from google.cloud import pubsub_v1
-import os, json
-
-from services import ingestion
-from repo import messages, classifications, senders
-from clients import db
-# existing classification (Phase 1 only — replaced in Phase 3)
-from services.email_processor import EmailProcessor
-
-def process(message):
-    payload = json.loads(message.data)
-    if payload.get("changeType") != "created":
-        return
-
-    msg = ingestion.normalize(payload)
-
-    if messages.exists(msg["source"], msg["external_id"]):
-        return
-
-    msg_id = messages.insert(msg)
-    senders.upsert(msg["sender"], msg["source"])
-
-    # Phase 1: run existing classification unchanged
-    # Replaced by handlers/pipeline.py in Phase 3
-    ...
-
-def main():
-    subscriber = pubsub_v1.SubscriberClient()
-    subscription = subscriber.subscription_path(
-        os.environ["GCP_PROJECT_ID"], "inbox-messages-pull"
-    )
-    with subscriber:
-        future = subscriber.subscribe(subscription, callback=lambda m: (process(m), m.ack()))
-        future.result()
-
-if __name__ == "__main__":
-    main()
+def get_conn():
+    connection_name = os.environ.get("CLOUD_SQL_CONNECTION_NAME")
+    if connection_name:
+        from google.cloud.sql.connector import Connector
+        return Connector().connect(connection_name, "psycopg",
+            user=..., password=..., db=..., row_factory=dict_row)
+    return psycopg.connect(host=..., ...)  # local dev fallback
 ```
 
-### 6. GKE infrastructure (`~/src/infra/k8s/inbox/`)
+### 6. `clients/azure/graph_email_client.py` — token cache path
 
-**`deployment.yaml`**:
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: inbox-processor
-  namespace: apps
-spec:
-  replicas: 0          # KEDA manages this
-  selector:
-    matchLabels:
-      app: inbox-processor
-  template:
-    metadata:
-      labels:
-        app: inbox-processor
-    spec:
-      containers:
-      - name: inbox-processor
-        image: # Artifact Registry image URL
-        command: ["python", "scripts/worker.py"]
-        envFrom:
-        - secretRef:
-            name: postgres-credentials
-        env:
-        - name: GCP_PROJECT_ID
-          value: "bens-project-462804"
-        resources:
-          requests:
-            cpu: "1"
-            memory: "2Gi"
-```
-
-**`keda-scaledobject.yaml`**:
-```yaml
-apiVersion: keda.sh/v1alpha1
-kind: ScaledObject
-metadata:
-  name: inbox-processor
-  namespace: apps
-spec:
-  scaleTargetRef:
-    name: inbox-processor
-  minReplicaCount: 0
-  maxReplicaCount: 3
-  triggers:
-  - type: gcp-pubsub
-    metadata:
-      subscriptionName: inbox-messages-pull
-      mode: SubscriptionSize
-      value: "1"
-```
+Token cache moved from `.token_cache.json` (relative) to `~/.inbox-token-cache.json` (absolute) to prevent accidental inclusion in the Cloud Function source zip.
 
 ### 7. GCP infrastructure (`terraform/`)
 
-New files:
-
-- **`cloud_functions.tf`** — HTTP-triggered Cloud Function deploying `handlers/webhook.py`; a second function for subscription renewal
-- **`pubsub.tf`** — `inbox-messages` topic + `inbox-messages-pull` pull subscription
-- **`scheduler.tf`** (update) — add renewal job: calls the renewal Cloud Function every 2 days
+- **`cloudsql.tf`** (new) — Cloud SQL Postgres 16 instance + database + user
+- **`cloud_functions.tf`** (updated) — adds `inbox-process` CF with Pub/Sub event trigger; source is repo root (includes all shared modules)
+- **`pubsub.tf`** (updated) — pull subscription removed; CF event trigger creates its own
+- **`iam.tf`** (updated) — GKE worker SA removed; `inbox-process-cf` SA added with `cloudsql.client` + Secret Manager roles
+- **`secrets.tf`** (updated) — adds `inbox-db-password`
+- **`variables.tf`** (updated) — adds `db_user`, `db_password`
+- **`main.tf`** (updated) — enables `sqladmin.googleapis.com` API
 
 ### 8. Register the Graph subscription
 
-After deploying the Cloud Function, run once:
+After `terraform apply`, run once:
 
 ```python
+from clients.azure import GraphEmailClient
 from clients.graph_subscriptions import register
-register(notification_url="https://<cloud-function-url>/webhook")
+c = GraphEmailClient(); c.authenticate_headless()
+result = register(c, "https://inbox-webhook-aizbgjlava-uc.a.run.app")
+print(result["id"])  # set as graph_subscription_id in terraform.tfvars
 ```
 
 ### 9. `requirements.txt` additions
@@ -254,15 +176,16 @@ psycopg[binary]>=3.1
 pgvector>=0.2
 functions-framework>=3.0
 google-cloud-pubsub>=2.18
+cloud-sql-python-connector[psycopg]>=1.7.0
 ```
 
 ### Phase 1 deliverable
 
-Event-driven GKE worker receives messages, writes to DB, runs existing gpt-4o-mini classification. Existing Cloud Run Job stays as daily fallback.
+Event-driven Cloud Function processor receives messages via Pub/Sub, writes to Cloud SQL, runs existing gpt-4o-mini classification. Existing Cloud Run Job stays as daily fallback.
 
 ---
 
-## Phase 2: Embeddings + retrieval
+## Phase 2: Embeddings + retrieval — ⬅️ Current
 
 **What it does**: Embed each new message and store it. Implement nearest-neighbor retrieval. Results are logged but not yet used in the prompt.
 
@@ -299,47 +222,65 @@ LIMIT %s
 
 **`current_label` is always NULL at write time.** LLM-assigned labels never go into this column — only human corrections and confirmations (Phase 4) do. This prevents bad LLM guesses from becoming retrieval examples.
 
-### Docker image
+### Wire into `main.py`
 
-Add a `Dockerfile` for the GKE worker (separate from `Dockerfile.analyze-emails`). Bake the bge model into the image at build time so the pod doesn't download it on cold start:
-
-```dockerfile
-FROM python:3.11-slim
-WORKDIR /app
-ENV PYTHONPATH=/app
-
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Download bge model at build time
-RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('BAAI/bge-small-en-v1.5')"
-
-COPY . .
-CMD ["python", "scripts/worker.py"]
-```
-
-### Wire into `scripts/worker.py`
-
-Load the model once at startup, embed after each DB write:
+Add module-level model initialization (reused across warm CF invocations) and embedding steps after the DB write:
 
 ```python
+import base64, json, logging
+import functions_framework
+from clients.azure.graph_email_client import GraphEmailClient
 from clients.bge import load_model
-from services.embedding import text_for_embedding, embed_and_store
+from clients.db import get_conn
+from repo import messages, senders
 from repo.embeddings import retrieve_neighbors
+from services.embedding import text_for_embedding, embed_and_store
+from services.ingestion import fetch, normalize
 
-model = load_model()  # once at startup
+_graph_client = None
+_model = load_model()  # bge-small-en-v1.5, once per CF instance
 
-def process(message):
-    ...
-    msg_id = messages.insert(msg)
-    senders.upsert(...)
 
-    cleaned = text_for_embedding(msg)
-    embed_and_store(msg_id, cleaned, model)
+def _get_graph_client():
+    global _graph_client
+    if _graph_client is None:
+        client = GraphEmailClient()
+        client.authenticate_headless()
+        _graph_client = client
+    return _graph_client
 
-    neighbors = retrieve_neighbors(model.encode(cleaned), exclude_id=msg_id)
-    log.info(f"Retrieved {len(neighbors)} neighbors for {msg_id}")
+
+@functions_framework.cloud_event
+def process(cloud_event):
+    data = base64.b64decode(cloud_event.data["message"]["data"]).decode()
+    notification = json.loads(data)
+
+    message_id = notification.get("resourceData", {}).get("id")
+    if not message_id:
+        return
+
+    email = fetch(message_id, _get_graph_client())
+    if email is None:
+        return
+
+    msg = normalize(email, raw=notification)
+
+    with get_conn() as conn:
+        if messages.exists(conn, msg["source"], msg["external_id"]):
+            return
+
+        msg_id = messages.insert(conn, msg)
+        senders.upsert(conn, msg["sender"], msg["source"])
+
+        cleaned = text_for_embedding(msg)
+        embed_and_store(msg_id, cleaned, _model)
+        conn.commit()
+
+    neighbors = retrieve_neighbors(_model.encode(cleaned), exclude_id=msg_id)
+    logger.info(f"Stored {msg_id} — retrieved {len(neighbors)} neighbors")
 ```
+
+**Cold start note**: `sentence-transformers` + bge-small-en-v1.5 (~130MB model, ~1GB with PyTorch) adds ~60s to cold starts. Acceptable for email triage. If latency becomes unacceptable, the processor can be migrated to Cloud Run with a custom container that bakes the model at build time — same code, different runtime.
 
 ### `requirements.txt` addition
 
@@ -353,7 +294,7 @@ Every new message gets an embedding stored in `message_embeddings`. Retrieval ru
 
 ---
 
-## Phase 3: New prompt + categories + tags
+## Phase 3: New prompt + categories + tags — Pending
 
 **What it does**: Switch to Claude Sonnet, new 5-category system, retrieval-augmented prompt. This is the first behavior change visible to the user.
 
@@ -402,20 +343,20 @@ Temperature: 0.2. Raise on invalid JSON or missing `category`.
 
 ### Secrets
 
-Add `anthropic-api-key` to Secret Manager and inject into the GKE pod. Keep `openai-api-key` until Phase 5.
+Add `anthropic-api-key` to Secret Manager and inject into the processor CF as a secret env var. Keep `openai-api-key` until Phase 5.
 
-### Replace `scripts/worker.py` classification logic
+### Replace Phase 1 logic in `main.py`
 
 ```python
 from handlers.pipeline import run as run_pipeline
 
-model = load_model()  # bge, once at startup
+_model = load_model()  # bge, once per CF instance
 
-def process(message):
-    payload = json.loads(message.data)
-    if payload.get("changeType") != "created":
-        return
-    run_pipeline(payload, model)
+@functions_framework.cloud_event
+def process(cloud_event):
+    data = base64.b64decode(cloud_event.data["message"]["data"]).decode()
+    notification = json.loads(data)
+    run_pipeline(notification, _model)
 ```
 
 ### Remove in this phase
@@ -432,7 +373,7 @@ End-to-end new classification pipeline live. 5 categories, tags, retrieval-augme
 
 ---
 
-## Phase 4: Feedback mechanism + action handlers
+## Phase 4: Feedback mechanism + action handlers — Pending
 
 **What it does**: All five categories drive Outlook folder moves or push notifications. Human corrections via ntfy.sh action buttons flow back to the vector store.
 
@@ -471,7 +412,7 @@ def notify(message_id: str, subject: str, sender: str, reasoning: str) -> None:
     )
 ```
 
-### Add `/label` route to `handlers/webhook.py`
+### Add `/label` route to `functions/webhook/main.py`
 
 ```python
 @functions_framework.http
@@ -497,48 +438,31 @@ def webhook(request):
     return "", 202
 ```
 
-### New Pub/Sub topic + subscription
+### New Pub/Sub topic + CF event trigger
 
-Add to `terraform/pubsub.tf`:
+Add to `terraform/pubsub.tf` and `terraform/cloud_functions.tf`:
 - `inbox-labels` topic
-- `inbox-labels-pull` pull subscription
+- A second processor CF (or extend `main.py`) with an event trigger on `inbox-labels`
 
-### Update `scripts/worker.py`
+### Update `main.py`
 
-Pull from both subscriptions. Route by topic:
+Route by the originating topic using the CloudEvent source attribute:
 
 ```python
-def process(message, topic):
-    if topic == "inbox-messages-pull":
-        handle_message(message)
-    elif topic == "inbox-labels-pull":
-        handle_label(message)
+@functions_framework.cloud_event
+def process(cloud_event):
+    source = cloud_event.get("source", "")
+    data = base64.b64decode(cloud_event.data["message"]["data"]).decode()
+    payload = json.loads(data)
 
-def handle_label(message):
-    payload = json.loads(message.data)
-    labeling.apply_label(
-        message_id=payload["message_id"],
-        label=payload["label"],
-        source=payload["source"],
-    )
-```
-
-### Update KEDA `ScaledObject`
-
-Watch both subscriptions:
-
-```yaml
-triggers:
-- type: gcp-pubsub
-  metadata:
-    subscriptionName: inbox-messages-pull
-    mode: SubscriptionSize
-    value: "1"
-- type: gcp-pubsub
-  metadata:
-    subscriptionName: inbox-labels-pull
-    mode: SubscriptionSize
-    value: "1"
+    if "inbox-labels" in source:
+        labeling.apply_label(
+            message_id=payload["message_id"],
+            label=payload["label"],
+            source=payload["source"],
+        )
+    else:
+        handle_message(payload)
 ```
 
 ### `services/labeling.py` — `apply_label`

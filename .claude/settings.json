@@ -1,0 +1,7 @@
+{
+  "skills": [
+    ".claude/skills/inbox-architecture",
+    ".claude/skills/terraform-plan",
+    ".claude/skills/terraform-apply"
+  ]
+}

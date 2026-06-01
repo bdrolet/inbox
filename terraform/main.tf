@@ -20,6 +20,11 @@ resource "google_project_service" "apis" {
     "run.googleapis.com",
     "cloudscheduler.googleapis.com",
     "artifactregistry.googleapis.com",
+    "cloudfunctions.googleapis.com",
+    "cloudbuild.googleapis.com",
+    "pubsub.googleapis.com",
+    "storage.googleapis.com",
+    "sqladmin.googleapis.com",
   ])
 
   service            = each.value
