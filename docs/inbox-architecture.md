@@ -165,7 +165,7 @@ Steps when a new message arrives, each a function call in `handlers/pipeline.py`
 
 **Trigger**: Microsoft Graph POSTs a rich change notification to the Cloud Function. The subscription is registered with `includeResourceData: true` and `$select=subject,from,body,receivedDateTime,toRecipients,hasAttachments`, so the notification payload contains the full message content — no separate Graph API fetch needed.
 
-The Cloud Function responds HTTP 202 immediately and publishes the payload to the `inbox-messages` Pub/Sub topic. The GKE worker pulls it via the `inbox-messages-pull` subscription. Only `changeType = "created"` notifications are processed; updates and deletes are discarded.
+The Cloud Function responds HTTP 202 immediately and publishes the payload to the `inbox-messages` Pub/Sub topic. Pub/Sub pushes the message to the `inbox-process` Cloud Function via its event trigger subscription. Only `changeType = "created"` notifications are processed; updates and deletes are discarded.
 
 Future SMS/voicemail ingestion services publish to the same topic with a `source` field; `handlers/pipeline.py` routes by source.
 
@@ -291,37 +291,34 @@ Each phase is independently deployable. Phases 1–2 preserve existing behavior.
 
 ### Phase 1: Schema + storage layer
 
-**Goal**: Add the database and write to it. Keep the existing Cloud Run Job running as a fallback while the new event-driven worker is stood up.
+**Goal**: Stand up the event-driven processor and database. Keep the existing Cloud Run Job running as a fallback.
 
-1. Enable pgvector on GKE Postgres: run `CREATE EXTENSION IF NOT EXISTS vector;` as a one-shot Kubernetes Job against `postgres.apps.svc.cluster.local`
-2. Add DB credentials to a k8s Secret in the `apps` namespace
-3. Write `clients/db.py` — psycopg connection to `postgres.apps.svc.cluster.local`
-4. Write `repo/schema.sql` — all 5 tables per Section 6
-5. Write `scripts/migrate_db.py` — one-shot schema migration; run as a Kubernetes Job
-6. Write `models/message.py` — common `Message` TypedDict
-7. Write `services/ingestion.py` — `normalize(raw_notification)` extracting fields from the Graph rich notification payload
-8. Write `repo/messages.py`, `repo/classifications.py`, `repo/senders.py`
-9. Write `handlers/webhook.py` — Cloud Function: `GET` echoes `validationToken`; `POST` publishes to Pub/Sub and returns HTTP 202
-10. Write `scripts/worker.py` — GKE pod entry point: Pub/Sub pull loop → `services/ingestion.normalize()` → DB write → existing gpt-4o-mini classification
-11. Write `clients/graph_subscriptions.py` — `register()` and `renew()`
-12. Install KEDA on the GKE cluster via Helm
-13. Add Terraform: `cloud_functions.tf` (webhook CF + renewal CF), `pubsub.tf` (topic + pull subscription), update `scheduler.tf` (renewal job); add `infra/k8s/inbox/deployment.yaml`, `keda-scaledobject.yaml`
-14. Update `requirements.txt`: add `psycopg[binary]`, `pgvector`, `functions-framework`, `google-cloud-pubsub`
-15. Register the Graph subscription with `includeResourceData: true` pointing at the Cloud Function URL
+1. Provision Cloud SQL Postgres 16 + pgvector via `terraform/cloudsql.tf` (db-f1-micro, `us-central1`)
+2. Write `clients/db.py` — Cloud SQL Python Connector when `CLOUD_SQL_CONNECTION_NAME` is set, direct psycopg fallback for local dev
+3. Write `repo/schema.sql` — all 5 tables per Section 6
+4. Write `scripts/migrate_db.py` — one-shot schema migration; run locally after `terraform apply`
+5. Write `models/message.py` — common `Message` TypedDict
+6. Write `services/ingestion.py` — `normalize(email, raw)` extracting fields from the Graph payload
+7. Write `repo/messages.py`, `repo/classifications.py`, `repo/senders.py`
+8. Write `functions/webhook/main.py` — Cloud Function: `GET` echoes `validationToken`; `POST` publishes to Pub/Sub
+9. Write `main.py` — processor Cloud Function entry point: Pub/Sub event trigger → fetch email → normalize → DB write
+10. Write `clients/graph_subscriptions.py` — `register()` and `renew()`
+11. Add Terraform: `cloud_functions.tf` (webhook + renew + processor CFs), `cloudsql.tf`, `pubsub.tf`, `iam.tf`; update `scheduler.tf`, `variables.tf`, `secrets.tf`
+12. Update `requirements.txt`: add `psycopg[binary]`, `pgvector`, `cloud-sql-python-connector[psycopg]`, `functions-framework`, `google-cloud-pubsub`
+13. Register the Graph subscription pointing at the webhook CF URL
 
-**Deliverable**: Event-driven GKE worker receives messages via Pub/Sub, scales 0→1 with KEDA, writes to GKE Postgres. Existing Cloud Run Job stays as daily fallback until Phase 5.
+**Deliverable**: Pub/Sub-triggered Cloud Function processor receives messages, writes to Cloud SQL. Existing Cloud Run Job stays as daily fallback until Phase 5.
 
 ### Phase 2: Embeddings + retrieval
 
 **Goal**: Embed each new message and implement retrieval. Results are logged but not yet used in the prompt.
 
-1. Write `clients/bge.py` — `load_model()`, `encode()`; model loads once at pod startup
+1. Write `clients/bge.py` — `load_model()`, `encode()`; model loads once per CF instance (module-level)
 2. Write `services/embedding.py` — `text_for_embedding()`, `strip_reply_chain()`, `strip_signature()`, `embed_and_store()`
 3. Write `repo/embeddings.py` — `store_embedding()`, `retrieve_neighbors()` using psycopg + pgvector
 4. Update `requirements.txt`: add `sentence-transformers`
-5. Add `Dockerfile` for the GKE worker image; bake bge model in during build (~400MB image, avoids cold-start download)
-6. Wire `services/embedding.embed_and_store()` and `repo/embeddings.retrieve_neighbors()` into `scripts/worker.py`
-7. Log retrieval results; don't feed into prompt yet
+5. Wire `services/embedding.embed_and_store()` and `repo/embeddings.retrieve_neighbors()` into `main.py`
+6. Log retrieval results; don't feed into prompt yet
 
 **Deliverable**: Every new message gets an embedding stored; retrieval runs and logs top-k neighbors for validation.
 
@@ -334,9 +331,9 @@ Each phase is independently deployable. Phases 1–2 preserve existing behavior.
 3. Write `clients/claude.py` — Anthropic SDK call, structured JSON response parsing
 4. Write `services/labeling.py` — `apply_label()` for human correction/confirmation path
 5. Write `handlers/pipeline.py` — full 16-step orchestrator
-6. Add `anthropic-api-key` to Secret Manager and k8s Secret; keep `openai-api-key` until Phase 5
+6. Add `anthropic-api-key` to Secret Manager and inject into the processor CF; keep `openai-api-key` until Phase 5
 7. Update `requirements.txt`: add `anthropic`; remove `langchain-openai`, `langchain-core`
-8. Update `scripts/worker.py` to call `handlers.pipeline.run()` instead of the old classification logic
+8. Update `main.py` to call `handlers.pipeline.run()` instead of the Phase 1 ingestion-only logic
 9. Remove `services/email_analyzer.py`, `services/email_processor.py`; remove `models/email.py`
 
 **Deliverable**: End-to-end new classification system live; old 8-category path removed.
@@ -353,10 +350,9 @@ Each phase is independently deployable. Phases 1–2 preserve existing behavior.
    - `reference.py` — `archiving.move_to_folder(msg, "Archive")`
    - `ignore.py` — `archiving.move_to_folder(msg, "Archive")`
 3. Write `clients/ntfy.py` — POST to `https://ntfy.sh/{topic}` with action buttons configured
-4. Add `/label` route to `handlers/webhook.py` — receives ntfy.sh button callback, publishes to `inbox-labels` Pub/Sub topic
-5. Add `inbox-labels` topic + pull subscription to `terraform/pubsub.tf`
-6. Update `scripts/worker.py` to pull from both `inbox-messages-pull` and `inbox-labels-pull`; call `services/labeling.apply_label()` on label events
-7. Update KEDA `ScaledObject` to watch both subscriptions
+4. Add `/label` route to `functions/webhook/main.py` — receives ntfy.sh button callback, publishes to `inbox-labels` Pub/Sub topic
+5. Add `inbox-labels` topic + event-triggered CF to `terraform/pubsub.tf` and `terraform/cloud_functions.tf`
+6. Update `main.py` to handle label events from `inbox-labels` in addition to message events
 
 **Deliverable**: All five categories drive folder moves or notifications; urgent messages include ntfy.sh action buttons; human corrections flow back to `message_embeddings.current_label`.
 
