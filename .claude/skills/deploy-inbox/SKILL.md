@@ -23,14 +23,16 @@ Tell terraform-apply that this deploy updates the `inbox-process` Cloud Function
 
 ## After a successful deploy
 
+Run these checks and collect their output — you'll post everything to the PR in the next step.
+
 1. **Verify the new version is live:**
    ```bash
    gcloud functions describe inbox-process --region us-central1 --project bens-project-462804 --format='value(updateTime)'
    ```
 
-2. **Send a test email** and check Cloud Function logs:
+2. **Tail recent Cloud Function logs** (wait ~30s after deploy for logs to appear):
    ```bash
-   gcloud functions logs read inbox-process --region us-central1 --project bens-project-462804 --limit 20
+   gcloud functions logs read inbox-process --region us-central1 --project bens-project-462804 --limit 30
    ```
    Look for: `Stored <uuid> — <sender>: <subject> (N labeled neighbors)`
 
@@ -39,6 +41,32 @@ Tell terraform-apply that this deploy updates the `inbox-process` Cloud Function
    # Connect via Cloud SQL Proxy or psql skill, then:
    SELECT count(*) FROM message_embeddings;
    ```
+
+## Post a PR comment with results
+
+After the checks above, post a single comment on the open PR summarizing the full deploy:
+
+```bash
+gh pr comment <number> --body "$(cat <<'EOF'
+## Deploy: inbox-process ✅ (or ❌)
+
+**Updated:** <updateTime from gcloud describe>
+
+### Terraform result
+<paste the apply summary line from terraform-apply, e.g. "Apply complete! Resources: 0 added, 1 changed, 0 destroyed.">
+
+### Function logs (post-deploy)
+\`\`\`
+<last 30 lines from gcloud functions logs read>
+\`\`\`
+
+### Notes
+<any observations — errors, cold start, embedding count, etc.>
+EOF
+)"
+```
+
+If the deploy failed, lead with ❌ and include the error from the apply or logs.
 
 ## Cold start note
 
