@@ -224,29 +224,63 @@ LIMIT %s
 
 ### Wire into `main.py`
 
-Load the model once at module level (reused across warm CF invocations), embed after each DB write:
+Add module-level model initialization (reused across warm CF invocations) and embedding steps after the DB write:
 
 ```python
+import base64, json, logging
+import functions_framework
+from clients.azure.graph_email_client import GraphEmailClient
 from clients.bge import load_model
-from services.embedding import text_for_embedding, embed_and_store
+from clients.db import get_conn
+from repo import messages, senders
 from repo.embeddings import retrieve_neighbors
+from services.embedding import text_for_embedding, embed_and_store
+from services.ingestion import fetch, normalize
 
-_model = load_model()  # once per CF instance
+_graph_client = None
+_model = load_model()  # bge-small-en-v1.5, once per CF instance
+
+
+def _get_graph_client():
+    global _graph_client
+    if _graph_client is None:
+        client = GraphEmailClient()
+        client.authenticate_headless()
+        _graph_client = client
+    return _graph_client
+
 
 @functions_framework.cloud_event
 def process(cloud_event):
-    ...
-    msg_id = messages.insert(conn, msg)
-    senders.upsert(conn, msg["sender"], msg["source"])
+    data = base64.b64decode(cloud_event.data["message"]["data"]).decode()
+    notification = json.loads(data)
 
-    cleaned = text_for_embedding(msg)
-    embed_and_store(msg_id, cleaned, _model)
+    message_id = notification.get("resourceData", {}).get("id")
+    if not message_id:
+        return
+
+    email = fetch(message_id, _get_graph_client())
+    if email is None:
+        return
+
+    msg = normalize(email, raw=notification)
+
+    with get_conn() as conn:
+        if messages.exists(conn, msg["source"], msg["external_id"]):
+            return
+
+        msg_id = messages.insert(conn, msg)
+        senders.upsert(conn, msg["sender"], msg["source"])
+
+        cleaned = text_for_embedding(msg)
+        embed_and_store(msg_id, cleaned, _model)
+        conn.commit()
 
     neighbors = retrieve_neighbors(_model.encode(cleaned), exclude_id=msg_id)
-    logger.info(f"Retrieved {len(neighbors)} neighbors for {msg_id}")
+    logger.info(f"Stored {msg_id} — retrieved {len(neighbors)} neighbors")
 ```
 
-**Cold start note**: `sentence-transformers` + bge-small-en-v1.5 (~130MB model, ~1GB with PyTorch) adds ~60s to cold starts. This is acceptable for email triage. If latency becomes an issue, the processor can be migrated to Cloud Run with a custom container that bakes the model at build time.
+**Cold start note**: `sentence-transformers` + bge-small-en-v1.5 (~130MB model, ~1GB with PyTorch) adds ~60s to cold starts. Acceptable for email triage. If latency becomes unacceptable, the processor can be migrated to Cloud Run with a custom container that bakes the model at build time — same code, different runtime.
 
 ### `requirements.txt` addition
 
