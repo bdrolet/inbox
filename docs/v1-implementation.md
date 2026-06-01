@@ -6,7 +6,7 @@ Full architecture context: [inbox-architecture.md](inbox-architecture.md)
 
 ---
 
-## Phase 1: Schema + storage layer
+## Phase 1: Schema + storage layer — ✅ Complete
 
 **What it does**: Stand up the event-driven Cloud Function processor and Cloud SQL database. Classification logic is unchanged (still gpt-4o-mini, 8 categories) — the goal is infrastructure only.
 
@@ -185,7 +185,7 @@ Event-driven Cloud Function processor receives messages via Pub/Sub, writes to C
 
 ---
 
-## Phase 2: Embeddings + retrieval
+## Phase 2: Embeddings + retrieval — ⬅️ Current
 
 **What it does**: Embed each new message and store it. Implement nearest-neighbor retrieval. Results are logged but not yet used in the prompt.
 
@@ -294,7 +294,7 @@ Every new message gets an embedding stored in `message_embeddings`. Retrieval ru
 
 ---
 
-## Phase 3: New prompt + categories + tags
+## Phase 3: New prompt + categories + tags — Pending
 
 **What it does**: Switch to Claude Sonnet, new 5-category system, retrieval-augmented prompt. This is the first behavior change visible to the user.
 
@@ -373,7 +373,7 @@ End-to-end new classification pipeline live. 5 categories, tags, retrieval-augme
 
 ---
 
-## Phase 4: Feedback mechanism + action handlers
+## Phase 4: Feedback mechanism + action handlers — Pending
 
 **What it does**: All five categories drive Outlook folder moves or push notifications. Human corrections via ntfy.sh action buttons flow back to the vector store.
 
