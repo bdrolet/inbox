@@ -190,6 +190,7 @@ resource "google_cloudfunctions2_function" "process" {
     min_instance_count             = 0
     max_instance_count             = 3
     timeout_seconds                = 300
+    available_cpu                  = "1"
     available_memory               = "2Gi"
     environment_variables = {
       GCP_PROJECT_ID             = var.project_id
