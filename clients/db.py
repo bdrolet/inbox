@@ -19,14 +19,14 @@ def get_conn() -> psycopg.Connection:
 
 
 def _cloud_sql_conn(connection_name: str) -> psycopg.Connection:
-    from google.cloud.sql.connector import Connector
-    connector = Connector()
-    return connector.connect(
-        connection_name,
-        "psycopg",
+    # Cloud Run mounts the Unix socket when run.googleapis.com/cloudsql-instances
+    # annotation is set. Connect directly via psycopg — avoids the connector's
+    # psycopg driver registration issue.
+    return psycopg.connect(
+        host=f"/cloudsql/{connection_name}",
+        dbname=os.environ.get("POSTGRES_DB", "app"),
         user=os.environ["POSTGRES_USER"],
         password=os.environ["POSTGRES_PASSWORD"],
-        db=os.environ.get("POSTGRES_DB", "app"),
         row_factory=dict_row,
     )
 
