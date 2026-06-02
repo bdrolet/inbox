@@ -192,10 +192,6 @@ resource "google_cloudfunctions2_function" "process" {
     timeout_seconds                = 300
     available_cpu                  = "1"
     available_memory               = "2Gi"
-    annotations = {
-      # Mounts the Cloud SQL Unix socket at /cloudsql/<connection_name>
-      "run.googleapis.com/cloudsql-instances" = google_sql_database_instance.inbox.connection_name
-    }
     environment_variables = {
       GCP_PROJECT_ID             = var.project_id
       CLOUD_SQL_CONNECTION_NAME  = google_sql_database_instance.inbox.connection_name
