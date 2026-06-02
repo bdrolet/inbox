@@ -140,5 +140,5 @@ CLOUD_SQL_CONNECTION_NAME=bens-project-462804:us-central1:inbox \
 
 ## Known issues / gotchas
 
-- **Cloud SQL Python Connector local use**: the `psycopg` driver string is not supported by connector v1.20.3 locally. For local scripts that need DB access, use `pg8000` with the connector or run via Cloud SQL Proxy. The Cloud Function environment handles this correctly.
+- **Cloud SQL Python Connector**: connector v1.20.3 does not support the `"psycopg"` driver at all (only pg8000/asyncpg/pymysql/pytds). `clients/db.py` uses pg8000 with a `_Pg8000Conn` wrapper that implements psycopg3's `conn.execute()` API and dict-row behaviour. The direct (local) path still uses psycopg3 natively.
 - **`clients/db.py` local fallback**: set `POSTGRES_HOST` (not `CLOUD_SQL_CONNECTION_NAME`) for a direct psycopg3 connection to a local Postgres instance.
