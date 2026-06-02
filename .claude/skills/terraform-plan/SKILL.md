@@ -49,7 +49,18 @@ If a PR exists, post a comment. If not, just print the summary to the user.
 
 ### 5. Post the PR comment
 
-Use `gh pr comment <number>` with a body structured as:
+**Always write the body to a temp file** — never inline with `--body "$(heredoc)"` as shell quoting corrupts backticks in markdown headings.
+
+```bash
+TMPFILE=$(mktemp /tmp/pr-comment-XXXXXX.md)
+cat > "$TMPFILE" << 'BODY_EOF'
+<body here>
+BODY_EOF
+gh pr comment <number> --body-file "$TMPFILE"
+rm -f "$TMPFILE"
+```
+
+Structure the body as:
 
 ````
 ## `terraform plan`
