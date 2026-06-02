@@ -30,13 +30,34 @@ Run these checks and collect their output — you'll post everything to the PR i
    gcloud functions describe inbox-process --region us-central1 --project bens-project-462804 --format='value(updateTime)'
    ```
 
-2. **Tail recent Cloud Function logs** (wait ~30s after deploy for logs to appear):
+2. **Tail recent processor logs** (wait ~30s after deploy for logs to appear):
    ```bash
-   gcloud functions logs read inbox-process --region us-central1 --project bens-project-462804 --limit 30
+   gcloud logging read \
+     'resource.type="cloud_run_revision" resource.labels.service_name="inbox-process"' \
+     --project bens-project-462804 --limit 30 --freshness=1h \
+     --format='table(timestamp, severity, textPayload)'
    ```
    Look for: `Stored <uuid> — <sender>: <subject> (N labeled neighbors)`
 
-3. **Phase 2+ check** — verify embeddings are being written:
+3. **Check the renew function is healthy** (403 here means the Graph subscription will eventually expire and stop delivering emails):
+   ```bash
+   gcloud logging read \
+     'resource.type="cloud_run_revision" resource.labels.service_name="inbox-renew"' \
+     --project bens-project-462804 --limit 10 --freshness=3d \
+     --format='table(timestamp, severity, httpRequest.status, textPayload)'
+   ```
+   Look for: `403` → Scheduler SA is missing `roles/run.invoker` on `inbox-renew` (fix in Terraform + re-register the Graph subscription manually).
+
+4. **Check the webhook is receiving email notifications** (POST requests = real emails, GET = validation pings only):
+   ```bash
+   gcloud logging read \
+     'resource.type="cloud_run_revision" resource.labels.service_name="inbox-webhook" httpRequest.requestMethod!=""' \
+     --project bens-project-462804 --limit 10 --freshness=1d \
+     --format='table(timestamp, httpRequest.requestMethod, httpRequest.status, httpRequest.latency)'
+   ```
+   If only GETs or no requests since deploy: Graph subscription may have expired — re-register it.
+
+5. **Phase 2+ check** — verify embeddings are being written:
    ```bash
    # Connect via Cloud SQL Proxy or psql skill, then:
    SELECT count(*) FROM message_embeddings;

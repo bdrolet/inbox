@@ -76,7 +76,7 @@ The Graph change-notification subscription points at the webhook Cloud Function 
 
 Webhook CF URL: `https://inbox-webhook-aizbgjlava-uc.a.run.app`
 
-Active subscription ID: `f4255e93-97d1-4087-b738-26c66c40a051` (set in `terraform/terraform.tfvars` as `graph_subscription_id`). Renewal runs automatically every 2 days via `inbox-renew` CF + Cloud Scheduler.
+Active subscription ID: `f0443feb-28dd-4d8c-be3c-919b5794fed4` (set in `terraform/terraform.tfvars` as `graph_subscription_id`). Renewal runs automatically every 2 days via `inbox-renew` CF + Cloud Scheduler.
 
 To re-register (e.g. after subscription expires):
 ```python

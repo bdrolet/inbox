@@ -13,10 +13,13 @@ Deploy with:
     --set-env-vars GCP_PROJECT_ID=bens-project-462804,WEBHOOK_CLIENT_STATE=inbox-webhook
 """
 import json
+import logging
 import os
 
 import functions_framework
 from google.cloud import pubsub_v1
+
+logger = logging.getLogger(__name__)
 
 _publisher: pubsub_v1.PublisherClient | None = None
 _messages_topic: str | None = None
@@ -37,23 +40,28 @@ def webhook(request):
     # Graph subscription validation handshake — must echo the token as text/plain
     validation_token = request.args.get("validationToken")
     if validation_token:
+        logger.info("Graph subscription validation handshake")
         return validation_token, 200, {"Content-Type": "text/plain"}
 
     body = request.get_json(silent=True) or {}
     publisher, topic = _publisher_client()
     client_state = os.environ.get("WEBHOOK_CLIENT_STATE", "inbox-webhook")
+    published = 0
 
     for notification in body.get("value", []):
-        # Lifecycle events (subscriptionRemoved, missed, reauthorizationRequired)
         if "lifecycleEvent" in notification:
+            logger.warning("Lifecycle event: %s", notification.get("lifecycleEvent"))
             continue
 
         if notification.get("changeType") != "created":
             continue
 
         if notification.get("clientState") != client_state:
+            logger.warning("Unexpected clientState: %s", notification.get("clientState"))
             continue
 
         publisher.publish(topic, json.dumps(notification).encode())
+        published += 1
 
+    logger.info("Published %d notification(s)", published)
     return "", 202
