@@ -23,8 +23,10 @@ def get_conn():
 
 def _cloud_sql_conn(connection_name: str) -> "_Pg8000Conn":
     # connector v1.20 does not support 'psycopg' driver — use pg8000 instead.
+    # pgvector.pg8000.register_vector expects pg8000.native.Connection, but the
+    # connector returns pg8000.dbapi.Connection. Serialize vectors as strings in
+    # _adapt_params instead — pgvector accepts the '[x,y,...]' text form implicitly.
     from google.cloud.sql.connector import Connector
-    from pgvector.pg8000 import register_vector
 
     connector = Connector()
     pg_conn = connector.connect(
@@ -34,7 +36,6 @@ def _cloud_sql_conn(connection_name: str) -> "_Pg8000Conn":
         password=os.environ["POSTGRES_PASSWORD"],
         db=os.environ.get("POSTGRES_DB", "app"),
     )
-    register_vector(pg_conn)
     return _Pg8000Conn(pg_conn)
 
 
@@ -57,6 +58,9 @@ def _adapt_params(params: Optional[tuple]) -> Optional[list]:
     for p in params:
         if isinstance(p, Jsonb):
             result.append(json.dumps(p.obj))
+        elif isinstance(p, list) and p and all(isinstance(x, (int, float)) for x in p):
+            # pgvector: serialize float lists as '[x,y,...]' — accepted via implicit text cast
+            result.append("[" + ",".join(str(x) for x in p) + "]")
         else:
             result.append(p)
     return result
