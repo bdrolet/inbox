@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from typing import Optional
 
-from models.email import Email
+from clients.azure.email import Email
 from models.message import Message
 
 

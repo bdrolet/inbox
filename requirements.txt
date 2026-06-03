@@ -1,6 +1,5 @@
-# Email analysis — existing Cloud Run Job (removed in Phase 5)
-langchain-core>=0.3.0
-langchain-openai>=0.2.0
+# LLM (Phase 3+)
+anthropic>=0.25
 
 # Microsoft Graph / Azure auth
 msal>=1.24.0

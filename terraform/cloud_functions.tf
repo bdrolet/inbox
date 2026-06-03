@@ -223,6 +223,12 @@ resource "google_cloudfunctions2_function" "process" {
       secret     = google_secret_manager_secret.secrets["tenant-id"].secret_id
       version    = "latest"
     }
+    secret_environment_variables {
+      key        = "ANTHROPIC_API_KEY"
+      project_id = var.project_id
+      secret     = google_secret_manager_secret.secrets["anthropic-api-key"].secret_id
+      version    = "latest"
+    }
   }
 
   event_trigger {

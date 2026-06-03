@@ -40,7 +40,13 @@ variable "tenant_id" {
 }
 
 variable "openai_api_key" {
-  description = "OpenAI API key"
+  description = "OpenAI API key (used by analyze-emails Cloud Run Job; removed in Phase 5)"
+  type        = string
+  sensitive   = true
+}
+
+variable "anthropic_api_key" {
+  description = "Anthropic API key (used by inbox-process Cloud Function)"
   type        = string
   sensitive   = true
 }
