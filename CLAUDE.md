@@ -101,15 +101,17 @@ The existing `analyze_emails.py` runs locally without a DB or Pub/Sub.
 
 ## Terraform
 
+Use the `/terraform-plan` and `/terraform-apply` skills when making changes to Terraform files. These handle credential checks, run the command, and post results as a PR comment automatically.
+
+First-time setup only — copy and fill in `terraform.tfvars`:
 ```bash
-cd terraform
-cp terraform.tfvars.example terraform.tfvars  # fill in secrets + db_password
-terraform init && terraform apply
+cd terraform && cp terraform.tfvars.example terraform.tfvars  # fill in secrets + db_password
+terraform init
 ```
 
 All GCP resources are in `terraform/` and fully applied. `terraform.tfvars` is gitignored; contains secrets and `db_password`.
 
-After first apply, run the schema migration:
+After a successful apply that creates Cloud SQL, run the schema migration:
 ```bash
 CLOUD_SQL_CONNECTION_NAME=bens-project-462804:us-central1:inbox \
   POSTGRES_USER=inbox POSTGRES_PASSWORD=<db_password> POSTGRES_DB=app \
