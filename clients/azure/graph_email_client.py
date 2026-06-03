@@ -11,7 +11,7 @@ from typing import List, Dict, Optional
 from datetime import datetime, timedelta
 import msal
 from dotenv import load_dotenv
-from models import Email
+from clients.azure.email import Email
 
 # Set up logging
 logging.basicConfig(level=logging.WARNING)

@@ -1,11 +1,12 @@
 locals {
   secrets = {
-    "client-id"        = var.client_id
-    "client-secret"    = var.client_secret
-    "tenant-id"        = var.tenant_id
-    "openai-api-key"   = var.openai_api_key
-    "msal-token-cache" = var.msal_token_cache
-    "inbox-db-password" = var.db_password
+    "client-id"          = var.client_id
+    "client-secret"      = var.client_secret
+    "tenant-id"          = var.tenant_id
+    "openai-api-key"     = var.openai_api_key
+    "anthropic-api-key"  = var.anthropic_api_key
+    "msal-token-cache"   = var.msal_token_cache
+    "inbox-db-password"  = var.db_password
   }
 }
 

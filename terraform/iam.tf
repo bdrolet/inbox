@@ -42,6 +42,13 @@ resource "google_secret_manager_secret_iam_member" "process_cf_db_password" {
   member    = "serviceAccount:${google_service_account.process_cf.email}"
 }
 
+# Read the Anthropic API key from Secret Manager
+resource "google_secret_manager_secret_iam_member" "process_cf_anthropic" {
+  secret_id = google_secret_manager_secret.secrets["anthropic-api-key"].secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.process_cf.email}"
+}
+
 # ---------------------------------------------------------------------------
 # Webhook Cloud Function service account
 # ---------------------------------------------------------------------------

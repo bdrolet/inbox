@@ -12,38 +12,13 @@ End-to-end check for a message through the inbox pipeline: logs → database →
 
 **Project:** `bens-project-462804` | **Function:** `inbox-process` | **DB:** Cloud SQL `app`
 
-## Step 1 — Fetch recent logs and DB state (run in parallel)
+## Step 1 — Fetch recent logs and DB state
 
-**Logs** — use the `fetch-inbox-logs` skill for commands, or quickly:
-```bash
-gcloud logging read \
-  'resource.type="cloud_run_revision" resource.labels.service_name="inbox-process" timestamp>="<ISO_TIME>"' \
-  --project bens-project-462804 --limit 30 \
-  --format='table(timestamp,severity,textPayload,httpRequest.latency)'
-```
+Read `agents/fetch-logs-and-db.md`, then spawn it (fast model). Pass:
+- `since`: ISO timestamp — use the time the email was sent, or ~30 min ago if unknown
+- `search_hint`: sender address or subject if known (e.g. `bdrolet@gmail.com`)
 
-Use `cloud_run_revision` + `service_name` (not `cloud_function`) — this surfaces HTTP request logs with latency and status, which `gcloud functions logs read` omits.
-
-**DB — recent messages** (run from `~/src/inbox` with venv active):
-```python
-import os, sys, subprocess
-sys.path.insert(0, os.path.expanduser('~/src/inbox'))
-os.environ.update({
-    'CLOUD_SQL_CONNECTION_NAME': 'bens-project-462804:us-central1:inbox',
-    'POSTGRES_USER': 'inbox', 'POSTGRES_DB': 'app',
-    'POSTGRES_PASSWORD': subprocess.check_output(
-        ['gcloud','secrets','versions','access','latest',
-         '--secret=inbox-db-password','--project=bens-project-462804'], text=True).strip(),
-})
-from clients.db import get_conn
-with get_conn() as conn:
-    for r in conn.execute(
-        'SELECT received_at, sender, subject FROM messages ORDER BY received_at DESC LIMIT 10', ()
-    ).fetchall():
-        print(r['received_at'], '|', r['sender'], '|', r['subject'])
-```
-
-`_DictCursor` requires `.fetchall()` / `.fetchone()` — iterating the cursor directly raises `TypeError`.
+The subagent runs the log query and DB query in parallel and returns a structured summary.
 
 ## Step 2 — Live-poll (waiting for a message to arrive)
 

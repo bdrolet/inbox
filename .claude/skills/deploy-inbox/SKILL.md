@@ -23,45 +23,14 @@ Tell terraform-apply that this deploy updates the `inbox-process` Cloud Function
 
 ## After a successful deploy
 
-Run these checks and collect their output — you'll post everything to the PR in the next step.
+Read `agents/run-health-checks.md`, then spawn it (fast model). Pass:
+- `project`: `bens-project-462804`
+- `region`: `us-central1`
+- `check_embeddings`: `true` for Phase 2+ deploys, `false` otherwise
 
-1. **Verify the new version is live:**
-   ```bash
-   gcloud functions describe inbox-process --region us-central1 --project bens-project-462804 --format='value(updateTime)'
-   ```
+The subagent runs all four checks in parallel (function version, processor logs, renew health, webhook activity) and returns a structured health summary. Include the full summary in the PR comment below.
 
-2. **Tail recent processor logs** (wait ~30s after deploy for logs to appear):
-   ```bash
-   gcloud logging read \
-     'resource.type="cloud_run_revision" resource.labels.service_name="inbox-process"' \
-     --project bens-project-462804 --limit 30 --freshness=1h \
-     --format='table(timestamp, severity, textPayload)'
-   ```
-   Look for: `Stored <uuid> — <sender>: <subject> (N labeled neighbors)`
-
-3. **Check the renew function is healthy** (403 here means the Graph subscription will eventually expire and stop delivering emails):
-   ```bash
-   gcloud logging read \
-     'resource.type="cloud_run_revision" resource.labels.service_name="inbox-renew"' \
-     --project bens-project-462804 --limit 10 --freshness=3d \
-     --format='table(timestamp, severity, httpRequest.status, textPayload)'
-   ```
-   Look for: `403` → Scheduler SA is missing `roles/run.invoker` on `inbox-renew` (fix in Terraform + re-register the Graph subscription manually).
-
-4. **Check the webhook is receiving email notifications** (POST requests = real emails, GET = validation pings only):
-   ```bash
-   gcloud logging read \
-     'resource.type="cloud_run_revision" resource.labels.service_name="inbox-webhook" httpRequest.requestMethod!=""' \
-     --project bens-project-462804 --limit 10 --freshness=1d \
-     --format='table(timestamp, httpRequest.requestMethod, httpRequest.status, httpRequest.latency)'
-   ```
-   If only GETs or no requests since deploy: Graph subscription may have expired — re-register it.
-
-5. **Phase 2+ check** — verify embeddings are being written:
-   ```bash
-   # Connect via Cloud SQL Proxy or psql skill, then:
-   SELECT count(*) FROM message_embeddings;
-   ```
+If the subagent can't run (e.g. gcloud not authenticated), run the checks inline sequentially as a fallback.
 
 ## Post a PR comment with results
 

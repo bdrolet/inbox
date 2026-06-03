@@ -49,64 +49,16 @@ Applying Terraform changes. This will provision/modify the following GCP resourc
 ⏳ Will post results when complete.
 ```
 
-### 3. Run the apply
+### 3. Spawn run-apply-and-comment (fast model)
 
-```bash
-cd /Users/ben/src/inbox/terraform
-terraform apply -auto-approve -no-color 2>&1
-```
+Read `agents/run-apply-and-comment.md`, then spawn it. Pass:
+- `working_dir`: `/Users/ben/src/inbox/terraform`
+- `pr_number`: PR number from step 2, or `null`
+- `description`: brief description of what this apply provisions, inferred from context
 
-This runs non-interactively. Cloud SQL instance creation can take 5–10 minutes.
+The subagent runs the apply (verbose output — including any 5–10 min Cloud SQL wait — stays in its context), parses the result, and posts the PR comment. It returns `result` (success/failure), a summary line, and any key outputs.
 
-### 4. Parse the output
-
-From the apply output, extract:
-- **Result** — `Apply complete! Resources: N added, N changed, N destroyed.` or error
-- **Resources created** — each `<resource>: Creation complete`
-- **Resources modified** — each `<resource>: Modifications complete`
-- **Resources destroyed** — each `<resource>: Destruction complete`
-- **Key outputs** — any `Outputs:` block (e.g. `cloud_sql_connection_name`, `webhook_url`)
-- **Errors** — any `Error:` blocks with the affected resource
-
-### 5. Post the result PR comment
-
-Use `gh pr comment <number>` with a body structured as:
-
-````
-## `terraform apply` — complete ✅  (or ❌ if failed)
-
-**<Apply complete! Resources: N added, N changed, N destroyed.>**
-
-<1-2 sentence summary of what was provisioned and what it enables>
-
-### Resources created
-- `<resource>` — <what it is>
-
-### Resources modified
-- `<resource>` — <what changed>
-
-### Resources destroyed
-- `<resource>` — <what was removed and why>
-
-### Outputs
-```
-<outputs block if present>
-```
-
-### Next steps
-<context-appropriate next steps — e.g. "Run scripts/migrate_db.py to apply the schema" or "Register the Graph subscription if expired">
-
-<details>
-<summary>Full apply output</summary>
-
-```
-<full output>
-```
-
-</details>
-````
-
-If the apply **failed**, lead with ❌, show the error clearly at the top, and suggest a fix.
+If `result: failure`, surface the error to the user immediately.
 
 ## Notes
 
