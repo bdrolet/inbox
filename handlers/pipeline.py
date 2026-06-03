@@ -47,6 +47,10 @@ def run(notification: dict, graph_client: GraphEmailClient, model) -> None:
         aggregates = aggregate_neighbors(neighbors)
         top_examples = neighbors[:3]
 
+        logger.debug(
+            "Classifying %s — %d labeled neighbors, aggregates: %s",
+            msg_id, len(neighbors), aggregates,
+        )
         system_prompt, user_message = build_prompt(msg, aggregates, top_examples, sender_ctx)
         result = classify(system_prompt, user_message)
 
