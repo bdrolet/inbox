@@ -40,10 +40,12 @@ _model = None
 def _get_graph_client() -> GraphEmailClient:
     global _graph_client
     if _graph_client is None:
-        client = GraphEmailClient()
-        if not client.authenticate_headless():
-            raise RuntimeError("Graph API headless authentication failed")
-        _graph_client = client
+        _graph_client = GraphEmailClient()
+    # Refresh token on every call — MSAL returns the cached access token instantly
+    # if still valid, and only hits the network when it expires (~1hr).
+    if not _graph_client.authenticate_headless():
+        _graph_client = None
+        raise RuntimeError("Graph API headless authentication failed")
     return _graph_client
 
 

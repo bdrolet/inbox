@@ -76,7 +76,7 @@ The Graph change-notification subscription points at the webhook Cloud Function 
 
 Webhook CF URL: `https://inbox-webhook-aizbgjlava-uc.a.run.app`
 
-Active subscription ID: `f4255e93-97d1-4087-b738-26c66c40a051` (set in `terraform/terraform.tfvars` as `graph_subscription_id`). Renewal runs automatically every 2 days via `inbox-renew` CF + Cloud Scheduler.
+Active subscription ID: `f0443feb-28dd-4d8c-be3c-919b5794fed4` (set in `terraform/terraform.tfvars` as `graph_subscription_id`). Renewal runs automatically every 2 days via `inbox-renew` CF + Cloud Scheduler.
 
 To re-register (e.g. after subscription expires):
 ```python
@@ -101,15 +101,17 @@ The existing `analyze_emails.py` runs locally without a DB or Pub/Sub.
 
 ## Terraform
 
+Use the `/terraform-plan` and `/terraform-apply` skills when making changes to Terraform files. These handle credential checks, run the command, and post results as a PR comment automatically.
+
+First-time setup only — copy and fill in `terraform.tfvars`:
 ```bash
-cd terraform
-cp terraform.tfvars.example terraform.tfvars  # fill in secrets + db_password
-terraform init && terraform apply
+cd terraform && cp terraform.tfvars.example terraform.tfvars  # fill in secrets + db_password
+terraform init
 ```
 
 All GCP resources are in `terraform/` and fully applied. `terraform.tfvars` is gitignored; contains secrets and `db_password`.
 
-After first apply, run the schema migration:
+After a successful apply that creates Cloud SQL, run the schema migration:
 ```bash
 CLOUD_SQL_CONNECTION_NAME=bens-project-462804:us-central1:inbox \
   POSTGRES_USER=inbox POSTGRES_PASSWORD=<db_password> POSTGRES_DB=app \
@@ -140,5 +142,5 @@ CLOUD_SQL_CONNECTION_NAME=bens-project-462804:us-central1:inbox \
 
 ## Known issues / gotchas
 
-- **Cloud SQL Python Connector local use**: the `psycopg` driver string is not supported by connector v1.20.3 locally. For local scripts that need DB access, use `pg8000` with the connector or run via Cloud SQL Proxy. The Cloud Function environment handles this correctly.
+- **Cloud SQL Python Connector**: connector v1.20.3 does not support the `"psycopg"` driver at all (only pg8000/asyncpg/pymysql/pytds). `clients/db.py` uses pg8000 with a `_Pg8000Conn` wrapper that implements psycopg3's `conn.execute()` API and dict-row behaviour. The direct (local) path still uses psycopg3 natively.
 - **`clients/db.py` local fallback**: set `POSTGRES_HOST` (not `CLOUD_SQL_CONNECTION_NAME`) for a direct psycopg3 connection to a local Postgres instance.

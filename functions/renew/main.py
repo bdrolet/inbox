@@ -11,6 +11,7 @@ Required env vars:
   MSAL_SECRET_NAME      — optional; defaults to msal-token-cache
 """
 import json
+import logging
 import os
 from datetime import datetime, timezone, timedelta
 
@@ -18,6 +19,8 @@ import functions_framework
 import msal
 import requests
 from google.cloud import secretmanager
+
+logger = logging.getLogger(__name__)
 
 
 def _load_msal_token() -> str:
@@ -71,16 +74,23 @@ def _get_access_token() -> str:
 def renew(request):
     subscription_id = os.environ.get("GRAPH_SUBSCRIPTION_ID")
     if not subscription_id:
+        logger.error("GRAPH_SUBSCRIPTION_ID not set")
         return "GRAPH_SUBSCRIPTION_ID not set", 500
 
     expiry = (datetime.now(timezone.utc) + timedelta(days=3)).strftime(
         "%Y-%m-%dT%H:%M:%S.0000000Z"
     )
+    logger.info("Renewing subscription %s until %s", subscription_id, expiry)
+
     token = _get_access_token()
     resp = requests.patch(
         f"https://graph.microsoft.com/v1.0/subscriptions/{subscription_id}",
         json={"expirationDateTime": expiry},
         headers={"Authorization": f"Bearer {token}"},
     )
-    resp.raise_for_status()
+    if not resp.ok:
+        logger.error("Graph PATCH %s returned %d: %s", subscription_id, resp.status_code, resp.text)
+        resp.raise_for_status()
+
+    logger.info("Subscription renewed — new expiry: %s", resp.json().get("expirationDateTime"))
     return json.dumps(resp.json()), 200, {"Content-Type": "application/json"}

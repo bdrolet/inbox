@@ -38,6 +38,15 @@ resource "google_cloudfunctions2_function_iam_member" "renew_invoker" {
   member         = "serviceAccount:${google_service_account.scheduler_sa.email}"
 }
 
+# Gen2 CFs run on Cloud Run — also need the Cloud Run invoker role
+resource "google_cloud_run_v2_service_iam_member" "renew_invoker" {
+  project  = var.project_id
+  location = var.region
+  name     = google_cloudfunctions2_function.renew.name
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${google_service_account.scheduler_sa.email}"
+}
+
 resource "google_cloud_scheduler_job" "inbox_renew" {
   name      = "inbox-subscription-renew"
   schedule  = "0 23 */2 * *"

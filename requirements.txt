@@ -12,9 +12,10 @@ google-cloud-pubsub>=2.18.0
 functions-framework>=3.0
 
 # Database (Phase 1)
-psycopg[binary]>=3.1
+psycopg>=3.1
+pg8000>=1.31
 pgvector>=0.2
-cloud-sql-python-connector[psycopg]>=1.7.0
+cloud-sql-python-connector>=1.7.0
 
 # Embeddings (Phase 2)
 sentence-transformers>=2.7
