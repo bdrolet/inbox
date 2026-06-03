@@ -21,75 +21,24 @@ If credentials are expired, stop and tell the user to run:
 gcloud auth application-default login
 ```
 
-### 2. Run the plan
+### 2. Check for an open PR
 
 ```bash
-cd /Users/ben/src/inbox/terraform
-terraform plan -no-color 2>&1
+gh pr view --json number -q '.number' 2>/dev/null
 ```
 
-`db_password` is a required sensitive variable. It must be present in `terraform.tfvars` (gitignored). If the plan errors with "No value for required variable", tell the user to add `db_password = "..."` to `terraform/terraform.tfvars`.
+Note the PR number (or null if none).
 
-### 3. Parse the output
+### 3. Spawn run-plan-and-comment (fast model)
 
-From the plan output, extract:
-- **Summary line** — e.g. `Plan: 3 to add, 0 to change, 1 to destroy.`
-- **Resources to add** — list each `# <resource> will be created`
-- **Resources to change** — list each `# <resource> will be updated in-place`
-- **Resources to destroy** — list each `# <resource> will be destroyed` — flag these prominently with ⚠️
-- **Errors** — any `Error:` blocks
+Read `agents/run-plan-and-comment.md`, then spawn it. Pass:
+- `working_dir`: `/Users/ben/src/inbox/terraform`
+- `pr_number`: PR number from step 2, or `null`
+- `description`: brief description of what this plan does, inferred from context
 
-### 4. Check for an open PR
+The subagent runs the plan (verbose output stays in its context), parses the result, and posts the PR comment. It returns a summary line plus `has_destroys` and `has_errors` flags.
 
-```bash
-gh pr view --json number,url,title 2>/dev/null
-```
-
-If a PR exists, post a comment. If not, just print the summary to the user.
-
-### 5. Post the PR comment
-
-**Always write the body to a temp file** — never inline with `--body "$(heredoc)"` as shell quoting corrupts backticks in markdown headings.
-
-```bash
-TMPFILE=$(mktemp /tmp/pr-comment-XXXXXX.md)
-cat > "$TMPFILE" << 'BODY_EOF'
-<body here>
-BODY_EOF
-gh pr comment <number> --body-file "$TMPFILE"
-rm -f "$TMPFILE"
-```
-
-Structure the body as:
-
-````
-## `terraform plan`
-
-**Result: <summary line>**
-
-<brief description of what this plan does — 1-2 sentences synthesizing the intent>
-
-### Resources to add (<count>)
-- `<resource_type>.<name>` — <one-line description of what it is>
-
-### Resources to change (<count>)
-- `<resource_type>.<name>` — <what's changing>
-
-### ⚠️ Resources to destroy (<count>)
-- `<resource_type>.<name>` — <what it is and why it's being removed>
-
-### Errors
-<any errors, or omit this section if none>
-
-<details>
-<summary>Full plan output</summary>
-
-```
-<full plan output>
-```
-
-</details>
-````
+If `has_destroys: true`, flag the destroyed resources prominently to the user before they proceed to apply. If `has_errors: true`, stop and surface the error.
 
 ## Notes
 
