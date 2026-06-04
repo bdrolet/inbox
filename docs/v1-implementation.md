@@ -306,7 +306,7 @@ Every new message gets an embedding stored in `message_embeddings`. Retrieval ru
 
 ---
 
-## Phase 3: New prompt + categories + tags — ⬅️ Current
+## Phase 3: New prompt + categories + tags — ✅ Complete
 
 **What it does**: Switch to Claude Sonnet, new 5-category system, retrieval-augmented prompt. This is the first behavior change visible to the user.
 
@@ -392,80 +392,94 @@ End-to-end new classification pipeline live. 5 categories, tags, retrieval-augme
 
 ---
 
-## Phase 4: Feedback mechanism + action handlers — Pending
+## Phase 4: Feedback mechanism + action handlers — ⬅️ In Progress
 
-**What it does**: All five categories drive Outlook folder moves or push notifications. Human corrections via ntfy.sh action buttons flow back to the vector store.
+**What it does**: All five categories drive Outlook folder moves or push notifications. Human corrections via ntfy action buttons flow back to the vector store.
 
-### New files to write
+### Status
+
+| Component | Status | Notes |
+|-----------|--------|-------|
+| ntfy server infrastructure | ✅ Done | Self-hosted on GCP e2-micro at `ntfy.drolet.ai` |
+| `clients/ntfy.py` | ✅ Done | Bearer token auth, importance in title, action buttons |
+| Terraform: VM + firewall + CF env vars | ✅ Done | `NTFY_BASE_URL`, `NTFY_TOPIC`, `NTFY_TOKEN` wired |
+| Set `ntfy_topic` + deploy CF | ⬜ Pending | Add to `terraform.tfvars`, run `/deploy-inbox` |
+| `services/archiving.py` | ⬜ Pending | Outlook folder moves via Graph API |
+| `handlers/actions/` | ⬜ Pending | Per-category dispatch |
+| `/label` webhook route | ⬜ Pending | Receives ntfy action button callbacks |
+| `inbox-labels` Pub/Sub topic | ⬜ Pending | Routes human feedback to processor |
+| `services/labeling.py` | ⬜ Pending | Writes `current_label` to `message_embeddings` |
+
+---
+
+### Done: ntfy self-hosted server
+
+ntfy runs on a GCP e2-micro VM (free tier) at `https://ntfy.drolet.ai`:
+- TLS via Let's Encrypt (cert valid 2026-09-02, auto-renews via cron)
+- `auth-default-access: deny-all` — admin user `ben`, access token in Secret Manager (`ntfy-token`)
+- `upstream-base-url: https://ntfy.sh` — required for iOS APNs delivery
+- VM provisioned via `terraform/ntfy.tf`; use `/deploy-ntfy` skill to reprovision or bootstrap
+
+### Done: `clients/ntfy.py`
+
+Uses self-hosted server with Bearer token auth. Importance included in title. No-ops when `NTFY_TOPIC` is unset.
+
+```python
+def notify(message_id: str, subject: str, sender: str, reasoning: str, importance: str) -> None:
+    if not NTFY_TOPIC:
+        return
+    headers = {"Authorization": f"Bearer {NTFY_TOKEN}"} if NTFY_TOKEN else {}
+    httpx.post(
+        f"{NTFY_BASE_URL}/{NTFY_TOPIC}",
+        headers=headers,
+        json={
+            "topic": NTFY_TOPIC,
+            "title": f"[{importance.upper()}] {subject}",
+            "message": f"From: {sender}\n\n{reasoning}",
+            "actions": [
+                {"action": "http", "label": "Correct", "url": f"{WEBHOOK_URL}/label?id={message_id}&label=urgent&source=human_confirmation"},
+                {"action": "http", "label": "Respond", "url": f"{WEBHOOK_URL}/label?id={message_id}&label=respond&source=human_correction"},
+                {"action": "http", "label": "Review",  "url": f"{WEBHOOK_URL}/label?id={message_id}&label=review&source=human_correction"},
+            ],
+        },
+        timeout=10,
+    )
+```
+
+### Pending: action handlers
 
 | File | What it does |
 |------|-------------|
-| `clients/ntfy.py` | POST to `https://ntfy.sh/{topic}` with action buttons |
 | `services/archiving.py` | `move_to_folder(msg, folder_name)` via Graph API |
 | `handlers/actions/dispatch.py` | Routes `result.category` to the right handler |
-| `handlers/actions/urgent.py` | ntfy.sh notification |
+| `handlers/actions/urgent.py` | Calls `clients/ntfy.notify()` |
 | `handlers/actions/respond.py` | `archiving.move_to_folder(msg, "To Respond")` |
 | `handlers/actions/review.py` | `archiving.move_to_folder(msg, "To Review")` |
 | `handlers/actions/reference.py` | `archiving.move_to_folder(msg, "Archive")` |
 | `handlers/actions/ignore.py` | `archiving.move_to_folder(msg, "Archive")` |
 
-### `clients/ntfy.py` — notification payload
+### Pending: `/label` route in `functions/webhook/main.py`
 
 ```python
-import httpx, os
-
-def notify(message_id: str, subject: str, sender: str, reasoning: str) -> None:
-    topic = os.environ["NTFY_TOPIC"]
-    httpx.post(
-        f"https://ntfy.sh/{topic}",
-        json={
-            "topic": topic,
-            "title": f"Urgent: {subject}",
-            "message": f"From: {sender}\n\n{reasoning}",
-            "actions": [
-                {"action": "http", "label": "✓ Correct",  "url": f"{os.environ['WEBHOOK_URL']}/label?id={message_id}&label=urgent&source=human_confirmation"},
-                {"action": "http", "label": "↓ Respond",  "url": f"{os.environ['WEBHOOK_URL']}/label?id={message_id}&label=respond&source=human_correction"},
-                {"action": "http", "label": "↓ Review",   "url": f"{os.environ['WEBHOOK_URL']}/label?id={message_id}&label=review&source=human_correction"},
-            ],
-        },
+if request.path == "/label":
+    publisher.publish(
+        LABELS_TOPIC,
+        json.dumps({
+            "message_id": request.args["id"],
+            "label": request.args["label"],
+            "source": request.args["source"],
+        }).encode(),
     )
-```
-
-### Add `/label` route to `functions/webhook/main.py`
-
-```python
-@functions_framework.http
-def webhook(request):
-    # validation handshake
-    if request.args.get("validationToken"):
-        return request.args["validationToken"], 200, {"Content-Type": "text/plain"}
-
-    # ntfy.sh action button callback
-    if request.path == "/label":
-        publisher.publish(
-            LABELS_TOPIC,
-            json.dumps({
-                "message_id": request.args["id"],
-                "label": request.args["label"],
-                "source": request.args["source"],
-            }).encode(),
-        )
-        return "", 202
-
-    # Graph change notification
-    publisher.publish(MESSAGES_TOPIC, request.get_data())
     return "", 202
 ```
 
-### New Pub/Sub topic + CF event trigger
+### Pending: `inbox-labels` Pub/Sub topic + CF routing
 
 Add to `terraform/pubsub.tf` and `terraform/cloud_functions.tf`:
 - `inbox-labels` topic
-- A second processor CF (or extend `main.py`) with an event trigger on `inbox-labels`
+- Event trigger on `inbox-labels` in `main.py`
 
-### Update `main.py`
-
-Route by the originating topic using the CloudEvent source attribute:
+Route by originating topic:
 
 ```python
 @functions_framework.cloud_event
@@ -484,34 +498,30 @@ def process(cloud_event):
         handle_message(payload)
 ```
 
-### `services/labeling.py` — `apply_label`
+### Pending: `services/labeling.py`
 
 ```python
 def apply_label(message_id: str, label: str, source: str) -> None:
     """source is 'human_confirmation' or 'human_correction'."""
     with db.transaction():
-        classifications.insert(
-            message_id=message_id,
-            category=label,
-            source=source,
-            # confidence, alternatives, tags, reasoning all None for human labels
-        )
+        classifications.insert(message_id=message_id, category=label, source=source)
         embeddings.set_current_label(message_id, label)
 ```
 
-`embeddings.set_current_label` sets `current_label` and `updated_at` in `message_embeddings`. Once set, the embedding becomes eligible as a retrieval example for future classifications.
+`set_current_label` sets `current_label` + `updated_at` in `message_embeddings`, making the embedding eligible as a retrieval example.
 
-### Environment variables to add
+### Environment variables (all wired in Terraform)
 
-| Variable | Value |
-|----------|-------|
-| `NTFY_TOPIC` | your ntfy.sh topic name |
-| `WEBHOOK_URL` | Cloud Function public URL (for action button callbacks) |
-| `ANTHROPIC_API_KEY` | from Secret Manager |
+| Variable | Secret / value |
+|----------|---------------|
+| `NTFY_BASE_URL` | `https://ntfy.drolet.ai` |
+| `NTFY_TOPIC` | Set in `terraform.tfvars` (pick a topic name, subscribe in app) |
+| `NTFY_TOKEN` | Secret Manager `ntfy-token` |
+| `WEBHOOK_URL` | `https://inbox-webhook-aizbgjlava-uc.a.run.app` |
 
 ### Phase 4 deliverable
 
-All five categories drive folder moves or notifications. Urgent messages include ntfy.sh action buttons. Tapping a button corrects the label and feeds the vector store.
+All five categories drive folder moves or notifications. Urgent messages push to phone with action buttons. Tapping a button corrects the label and feeds the vector store.
 
 ---
 
