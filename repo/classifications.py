@@ -15,18 +15,20 @@ def insert(
     reasoning: Optional[str] = None,
     model: Optional[str] = None,
     prompt_version: Optional[str] = None,
+    importance: Optional[str] = None,
 ) -> str:
     row = conn.execute(
         """
         INSERT INTO classifications
-            (message_id, category, confidence, alternatives, tags,
+            (message_id, category, importance, confidence, alternatives, tags,
              reasoning, model, prompt_version, source)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         RETURNING id
         """,
         (
             message_id,
             category,
+            importance,
             confidence,
             Jsonb(alternatives) if alternatives is not None else None,
             tags,

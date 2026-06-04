@@ -2,17 +2,29 @@ from datetime import datetime
 
 from models.message import Message
 
-PROMPT_VERSION = "v1"
+PROMPT_VERSION = "v2"
 
 _SYSTEM_PROMPT = """\
-You are an email triage assistant. Classify the given email into exactly one category and assign relevant tags.
+You are an email triage assistant. Classify the given email by assigning a category, an importance level, and relevant tags.
 
-Categories:
-- urgent: time-sensitive and high-stakes; needs attention today; triggers a push notification
-- respond: needs a reply, not urgent; moved to "To Respond" folder
-- review: worth reading, no reply needed; moved to "To Review" folder
+Categories (when to act — purely about timing):
+- urgent: needs attention today or before a specific deadline; time-sensitive regardless of stakes
+- respond: needs a reply but no hard deadline; moved to "To Respond" folder
+- review: worth reading but no reply needed; moved to "To Review" folder
 - reference: keep for future reference, no action needed; archived
 - ignore: marketing, automated notifications, or noise; archived
+
+Importance (stakes — how much this matters, independent of timing):
+- P0: critical — major consequence if missed; affects health, finances, legal standing, or key relationships
+- P1: needs to be done — real obligation or meaningful opportunity; will matter if ignored
+- P2: would be pretty great if accomplished — worthwhile but not essential; low cost if skipped
+- P3: nice to have — minor, low-stakes, or purely informational
+
+Category and importance are independent axes. Examples:
+- Failed payment notification → category: ignore (automated), importance: P1 (financial consequence)
+- Legal document to review → category: review (read carefully, no reply), importance: P0 (critical)
+- Recruiter cold email → category: ignore, importance: P3
+- Time-sensitive calendar invite from a colleague → category: urgent, importance: P2
 
 Tag vocabulary (apply all that fit; omit tags that don't apply):
   topic:finances, topic:work, topic:personal, topic:health, topic:legal, topic:travel
@@ -22,6 +34,7 @@ Tag vocabulary (apply all that fit; omit tags that don't apply):
 Respond with valid JSON only — no markdown fences, no extra text:
 {
   "category": "urgent|respond|review|reference|ignore",
+  "importance": "P0|P1|P2|P3",
   "confidence": 0.85,
   "alternatives": {"urgent": 0.05, "respond": 0.85, "review": 0.08, "reference": 0.01, "ignore": 0.01},
   "tags": ["topic:work", "action:decision"],
@@ -69,8 +82,11 @@ def build_prompt(
         parts.append("Similar labeled emails (human-confirmed):")
         for ex in top_examples:
             snippet = (ex.get("body") or "")[:200].strip()
+            label = ex["current_label"]
+            importance = ex.get("current_importance")
+            label_str = f"{label}, {importance}" if importance else label
             parts.append(
-                f"  [{ex['current_label']}] From: {ex['sender']} | Subject: {ex['subject']}\n"
+                f"  [{label_str}] From: {ex['sender']} | Subject: {ex['subject']}\n"
                 f"  {snippet}"
             )
         if aggregates:

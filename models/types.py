@@ -10,6 +10,13 @@ class Category(str, Enum):
     IGNORE = "ignore"
 
 
+class Importance(str, Enum):
+    P0 = "P0"  # critical
+    P1 = "P1"  # needs to be done
+    P2 = "P2"  # would be pretty great if accomplished
+    P3 = "P3"  # nice to have
+
+
 @dataclass
 class Classification:
     category: Category
@@ -17,3 +24,4 @@ class Classification:
     alternatives: dict[str, float]
     tags: list[str]
     reasoning: str
+    importance: Importance = Importance.P2

@@ -4,7 +4,7 @@ import os
 
 import anthropic
 
-from models.types import Category, Classification
+from models.types import Category, Classification, Importance
 
 logger = logging.getLogger(__name__)
 
@@ -57,10 +57,18 @@ def classify(system_prompt: str, user_message: str) -> Classification:
         logger.error("Claude response missing 'category': %s", data)
         raise ValueError(f"Claude response missing 'category': {data}")
 
+    raw_importance = data.get("importance", "P2")
+    try:
+        importance = Importance(raw_importance)
+    except ValueError:
+        logger.warning("Unrecognized importance value %r — defaulting to P2", raw_importance)
+        importance = Importance.P2
+
     return Classification(
         category=Category(data["category"]),
         confidence=float(data.get("confidence", 0.0)),
         alternatives=data.get("alternatives", {}),
         tags=data.get("tags", []),
         reasoning=data.get("reasoning", ""),
+        importance=importance,
     )

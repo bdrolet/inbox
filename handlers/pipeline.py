@@ -65,6 +65,7 @@ def run(notification: dict, graph_client: GraphEmailClient, model) -> None:
             reasoning=result.reasoning,
             model=_MODEL_NAME,
             prompt_version=PROMPT_VERSION,
+            importance=result.importance.value,
         )
         conn.commit()
 
