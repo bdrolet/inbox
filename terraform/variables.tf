@@ -92,3 +92,15 @@ variable "db_password" {
   type        = string
   sensitive   = true
 }
+
+variable "ntfy_domain" {
+  description = "Domain for the self-hosted ntfy server (e.g. ntfy.drolet.ai)"
+  type        = string
+  default     = "ntfy.drolet.ai"
+}
+
+variable "ntfy_topic" {
+  description = "ntfy topic name — treat like a password. Empty string disables notifications."
+  type        = string
+  default     = ""
+}
