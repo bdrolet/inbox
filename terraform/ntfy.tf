@@ -94,6 +94,7 @@ key-file: /etc/letsencrypt/live/$DOMAIN/privkey.pem
 cache-file: /var/cache/ntfy/cache.db
 auth-file: /var/lib/ntfy/user.db
 auth-default-access: deny-all
+upstream-base-url: https://ntfy.sh
 CONF
 systemctl start ntfy
 echo "0 3 * * * root certbot renew --quiet --deploy-hook 'systemctl reload ntfy'" >> /etc/crontab
