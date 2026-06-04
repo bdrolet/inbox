@@ -6,14 +6,20 @@ Run this before deploying Phase 3 to seed the vector store with
 human-confirmed labels.
 
 Usage:
-    python scripts/bootstrap_labels.py [--likely CATEGORY]
+    python scripts/bootstrap_labels.py [--likely CATEGORY] [--ai-filter CATEGORY]
 
 Options:
-    --likely CATEGORY   Show only unlabeled emails most similar to existing
-                        examples of CATEGORY (e.g. --likely urgent).
-                        Ranks by avg cosine similarity to labeled examples.
+    --likely CATEGORY     Show unlabeled emails ranked by embedding similarity
+                          to existing examples of CATEGORY.
+    --ai-filter CATEGORY  Use Claude to pre-classify unlabeled emails and show
+                          only those predicted as CATEGORY. Predictions are
+                          cached in the classifications table (source='llm') so
+                          re-runs are instant for already-scanned emails.
 
-See docs/seeding-classifications.md for full context.
+Note: importance is LLM-only metadata and is never prompted here. It is set
+by Claude during the ai_predict_category scan and stored in classifications.
+
+See docs/seeding-classifications.md and docs/labels.md for full context.
 """
 
 import argparse
@@ -107,6 +113,7 @@ def ai_predict_category(conn, msg) -> str | None:
         reasoning=result.reasoning,
         model="claude-sonnet-4-6",
         prompt_version="bootstrap-v1",
+        importance=result.importance.value,
     )
     conn.commit()
 

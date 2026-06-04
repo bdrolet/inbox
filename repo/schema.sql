@@ -15,18 +15,23 @@ CREATE TABLE IF NOT EXISTS messages (
 );
 
 CREATE TABLE IF NOT EXISTS message_embeddings (
-    message_id    UUID PRIMARY KEY REFERENCES messages(id) ON DELETE CASCADE,
-    embedding     vector(384)  NOT NULL,
-    current_label TEXT,        -- NULL until human confirms or corrects; never set by LLM
-    updated_at    TIMESTAMPTZ  DEFAULT now()
+    message_id        UUID PRIMARY KEY REFERENCES messages(id) ON DELETE CASCADE,
+    embedding         vector(384)  NOT NULL,
+    current_label     TEXT,        -- NULL until human confirms or corrects; never set by LLM
+    current_importance TEXT,       -- NULL until human confirms or corrects; never set by LLM
+    updated_at        TIMESTAMPTZ  DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS message_embeddings_hnsw
     ON message_embeddings USING hnsw (embedding vector_cosine_ops);
+
+-- Add current_importance to existing deployments (no-op if already present)
+ALTER TABLE message_embeddings ADD COLUMN IF NOT EXISTS current_importance TEXT;
 
 CREATE TABLE IF NOT EXISTS classifications (
     id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     message_id     UUID        NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
     category       TEXT        NOT NULL,
+    importance     TEXT,                -- 'P0'|'P1'|'P2'|'P3'; NULL for human-assigned rows
     confidence     FLOAT,
     alternatives   JSONB,
     tags           TEXT[],
@@ -38,6 +43,9 @@ CREATE TABLE IF NOT EXISTS classifications (
 );
 CREATE INDEX IF NOT EXISTS classifications_message_id
     ON classifications (message_id, created_at DESC);
+
+-- Add importance to existing deployments (no-op if already present)
+ALTER TABLE classifications ADD COLUMN IF NOT EXISTS importance TEXT;
 
 CREATE TABLE IF NOT EXISTS senders (
     identifier        TEXT NOT NULL,

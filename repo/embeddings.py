@@ -26,6 +26,7 @@ def retrieve_neighbors(
         """
         SELECT m.subject, m.body, m.sender,
                me.current_label,
+               me.current_importance,
                1 - (me.embedding <=> %s) AS similarity
         FROM message_embeddings me
         JOIN messages m ON m.id = me.message_id
@@ -46,4 +47,17 @@ def set_current_label(conn: psycopg.Connection, message_id: str, label: str) -> 
          WHERE message_id = %s
         """,
         (label, message_id),
+    )
+
+
+def set_current_importance(
+    conn: psycopg.Connection, message_id: str, importance: str
+) -> None:
+    conn.execute(
+        """
+        UPDATE message_embeddings
+           SET current_importance = %s, updated_at = now()
+         WHERE message_id = %s
+        """,
+        (importance, message_id),
     )

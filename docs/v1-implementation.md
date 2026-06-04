@@ -524,3 +524,33 @@ The system is fully functional for v1. Before going to production, complete Phas
 3. Decommission the old Cloud Run Job (delete from Terraform, remove `Dockerfile.analyze-emails`, delete `openai-api-key` secret)
 
 See [inbox-architecture.md](inbox-architecture.md) for full Phase 5 details.
+
+---
+
+## Longer term
+
+### Importance (P0–P3) — wired in Phase 3, surfaces in Phase 4+
+
+A second classification axis — **importance** — was added alongside the five urgency categories. Category captures *when to act* (timing/routing); importance captures *how much it matters* (stakes), independent of timing.
+
+| Level | Meaning |
+|-------|---------|
+| P0 | Critical — major consequence if missed |
+| P1 | Needs to be done — real obligation or opportunity |
+| P2 | Would be pretty great if accomplished |
+| P3 | Nice to have |
+
+**What's already done:**
+- `Importance` enum in `models/types.py`; `Classification.importance` defaults to P2
+- LLM prompt (v2) asks for both `category` and `importance`; they are framed as independent axes with cross-axis examples
+- `classifications.importance` column stores the LLM-assigned value
+- `message_embeddings.current_importance` column stores the human-confirmed value (set via `set_current_importance()`)
+- `retrieve_neighbors()` returns `current_importance`; `build_prompt()` shows `[category, importance]` in few-shot examples when set
+- `apply_label()` accepts optional `importance` parameter
+
+**Phase 4 follow-ons:**
+- `handlers/actions/urgent.py` should include `importance` in the ntfy.sh notification payload so you can distinguish a P0-urgent from a P3-urgent at a glance
+- The `/label` webhook route currently only passes `message_id`, `label`, and `source` — extend it to also carry `importance` if you want ntfy.sh button taps to set `current_importance`
+
+**Phase 5 follow-on:**
+- `scripts/bootstrap_labels.py` already stores LLM-assigned `importance` when caching predictions via `ai_predict_category()`; those values populate `classifications.importance` but not `current_importance` (which requires a human action). If you want retrieval examples to carry importance from the start, add a step to the bootstrap session that writes `current_importance` from the cached LLM value for high-confidence rows.

@@ -6,6 +6,8 @@ A label is a category assigned to a message. Labels drive two things: what happe
 
 ## The five categories
 
+Category captures **when to act** — purely about timing and routing.
+
 | Category | Action | Triggers notification |
 |----------|--------|-----------------------|
 | `urgent` | No folder move — notification sent via ntfy.sh | Yes |
@@ -13,6 +15,29 @@ A label is a category assigned to a message. Labels drive two things: what happe
 | `review` | Moved to "To Review" | No |
 | `reference` | Archived | No |
 | `ignore` | Archived | No |
+
+> `urgent` means **time-sensitive** — needs attention today or before a specific deadline. It says nothing about stakes; a trivial calendar invite can be urgent, and a critical legal document may not be.
+
+---
+
+## Importance
+
+Importance captures **how much this matters** — independent of timing.
+
+| Level | Meaning |
+|-------|---------|
+| `P0` | Critical — major consequence if missed; affects health, finances, legal standing, or key relationships |
+| `P1` | Needs to be done — real obligation or meaningful opportunity; will matter if ignored |
+| `P2` | Would be pretty great if accomplished — worthwhile but not essential; low cost if skipped |
+| `P3` | Nice to have — minor, low-stakes, or purely informational |
+
+Importance is assigned by the LLM in the same call as category. It is never set on the human path (like `confidence` and `reasoning`, it is LLM-only metadata). Dispatch and folder routing are driven by category alone; importance is stored for querying and filtering.
+
+**Examples of divergence:**
+- Failed payment notification → `ignore` + P1 (automated noise, but financial consequence)
+- Legal document to review → `review` + P0 (no reply needed, but critical stakes)
+- Recruiter cold outreach → `ignore` + P3
+- Time-sensitive but routine calendar invite → `urgent` + P2
 
 ---
 
@@ -54,9 +79,9 @@ Every label ever assigned to a message, LLM or human. One row per classification
 
 ### `message_embeddings` table
 
-One row per message. Holds the embedding vector and `current_label`.
+One row per message. Holds the embedding vector, `current_label`, and `current_importance`.
 
-`current_label` is only ever set by a human action. It is the single field that controls whether a message is eligible as a retrieval example.
+Both fields are only ever set by a human action. `current_label` controls whether a message is eligible as a retrieval example. `current_importance` enriches those examples — when set, it is shown alongside the category label in the retrieval context so Claude can see how similar emails were rated on both axes.
 
 ---
 
