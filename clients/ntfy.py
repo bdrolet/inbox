@@ -4,15 +4,21 @@ import httpx
 
 NTFY_BASE_URL = os.environ.get("NTFY_BASE_URL", "https://ntfy.sh")
 NTFY_TOPIC = os.environ.get("NTFY_TOPIC", "")
+NTFY_TOKEN = os.environ.get("NTFY_TOKEN", "")
 
 
 def notify(message_id: str, subject: str, sender: str, reasoning: str, importance: str) -> None:
     if not NTFY_TOPIC:
         return
 
+    headers = {}
+    if NTFY_TOKEN:
+        headers["Authorization"] = f"Bearer {NTFY_TOKEN}"
+
     webhook_url = os.environ["WEBHOOK_URL"]
     httpx.post(
         f"{NTFY_BASE_URL}/{NTFY_TOPIC}",
+        headers=headers,
         json={
             "topic": NTFY_TOPIC,
             "title": f"[{importance.upper()}] {subject}",

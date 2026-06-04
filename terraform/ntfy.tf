@@ -63,10 +63,15 @@ resource "google_compute_instance" "ntfy" {
 
     mkdir -p /var/cache/ntfy
 
+    mkdir -p /var/lib/ntfy
+    chown ntfy:ntfy /var/lib/ntfy
+
     cat > /etc/ntfy/server.yml <<EOF
 base-url: https://${var.ntfy_domain}
 listen-http: :80
 cache-file: /var/cache/ntfy/cache.db
+auth-file: /var/lib/ntfy/user.db
+auth-default-access: deny-all
 EOF
 
     # Run once after DNS points at this IP to obtain a cert and switch to HTTPS
@@ -87,6 +92,8 @@ listen-https: :443
 cert-file: /etc/letsencrypt/live/$DOMAIN/fullchain.pem
 key-file: /etc/letsencrypt/live/$DOMAIN/privkey.pem
 cache-file: /var/cache/ntfy/cache.db
+auth-file: /var/lib/ntfy/user.db
+auth-default-access: deny-all
 CONF
 systemctl start ntfy
 echo "0 3 * * * root certbot renew --quiet --deploy-hook 'systemctl reload ntfy'" >> /etc/crontab

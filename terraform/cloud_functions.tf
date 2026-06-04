@@ -231,6 +231,12 @@ resource "google_cloudfunctions2_function" "process" {
       secret     = google_secret_manager_secret.secrets["anthropic-api-key"].secret_id
       version    = "latest"
     }
+    secret_environment_variables {
+      key        = "NTFY_TOKEN"
+      project_id = var.project_id
+      secret     = data.google_secret_manager_secret.ntfy_token.secret_id
+      version    = "latest"
+    }
   }
 
   event_trigger {
