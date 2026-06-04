@@ -25,6 +25,7 @@ resource "google_project_service" "apis" {
     "pubsub.googleapis.com",
     "storage.googleapis.com",
     "sqladmin.googleapis.com",
+    "compute.googleapis.com",
   ])
 
   service            = each.value

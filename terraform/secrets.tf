@@ -27,6 +27,12 @@ resource "google_secret_manager_secret_version" "secrets" {
   secret_data = each.value
 }
 
+# ntfy-token and ntfy-password were created outside Terraform — reference as data sources
+data "google_secret_manager_secret" "ntfy_token" {
+  secret_id = "ntfy-token"
+  project   = var.project_id
+}
+
 # The Cloud Run service account needs to read all secrets
 resource "google_secret_manager_secret_iam_member" "accessor" {
   for_each  = local.secrets

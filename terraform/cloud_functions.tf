@@ -198,6 +198,8 @@ resource "google_cloudfunctions2_function" "process" {
       POSTGRES_USER              = var.db_user
       POSTGRES_DB                = "app"
       MSAL_SECRET_NAME           = "msal-token-cache"
+      NTFY_BASE_URL              = "https://${var.ntfy_domain}"
+      NTFY_TOPIC                 = var.ntfy_topic
     }
     secret_environment_variables {
       key        = "POSTGRES_PASSWORD"
@@ -227,6 +229,12 @@ resource "google_cloudfunctions2_function" "process" {
       key        = "ANTHROPIC_API_KEY"
       project_id = var.project_id
       secret     = google_secret_manager_secret.secrets["anthropic-api-key"].secret_id
+      version    = "latest"
+    }
+    secret_environment_variables {
+      key        = "NTFY_TOKEN"
+      project_id = var.project_id
+      secret     = data.google_secret_manager_secret.ntfy_token.secret_id
       version    = "latest"
     }
   }
