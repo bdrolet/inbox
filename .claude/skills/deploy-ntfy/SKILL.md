@@ -54,7 +54,7 @@ gcloud compute ssh ntfy \
   --command "sudo /root/bootstrap-tls.sh"
 ```
 
-This stops ntfy, runs `certbot --standalone` on port 80 to get a Let's Encrypt cert, reconfigures ntfy to HTTPS on port 443, and restarts it. Auto-renewal is added to cron.
+This stops ntfy, runs `certbot --standalone` on port 80, fixes cert permissions (ntfy runs as the `ntfy` user which needs read access to `/etc/letsencrypt/`), reconfigures ntfy to HTTPS on port 443, and restarts it. Auto-renewal is added to cron.
 
 ---
 
