@@ -4,7 +4,7 @@ Before Phase 3's retrieval-augmented prompt can provide useful context, the vect
 
 ## How many to label
 
-Target **60–75 emails** (12–15 per category). The five categories are:
+Target **12–15 per category** (60–75 total minimum). The five categories are:
 
 | Category | Description |
 |----------|-------------|
@@ -14,71 +14,86 @@ Target **60–75 emails** (12–15 per category). The five categories are:
 | `reference` | Keep but don't read now |
 | `ignore` | Marketing/noise |
 
-Your inbox will be skewed — probably lots of `ignore` and `reference`, fewer `urgent`. Be deliberate about labeling enough examples in the rarer categories. `urgent` especially matters since it drives the notification path.
+`ignore` and `review` fill up naturally from any inbox sample. `urgent`, `respond`, and `reference` require deliberate targeting — they won't appear in enough volume unless you seek them out.
 
 Fewer than ~10 per category is workable but expect weaker retrieval quality early on. Beyond ~100 total, returns diminish quickly.
 
-## What the script needs from you
+---
 
-For each email shown, you assign one of the five categories above. The script reads from the `messages` + `message_embeddings` tables (populated by Phases 1 & 2) and writes labels via `services/labeling.apply_label`.
+## Step 1: Backfill emails into the DB
 
-```python
-import os, textwrap
-from clients.db import get_conn
-from services.labeling import apply_label
-
-SHORTCUTS = {"u": "urgent", "r": "respond", "v": "review", "e": "reference", "i": "ignore"}
-
-def fetch_unlabeled(conn):
-    return conn.execute(
-        """
-        SELECT m.id, m.sender, m.subject, m.received_at, m.body
-        FROM messages m
-        JOIN message_embeddings me ON me.message_id = m.id
-        WHERE me.current_label IS NULL
-        ORDER BY m.received_at DESC
-        """
-    ).fetchall()
-
-def prompt_label(msg, idx, total):
-    print(f"\n[{idx}/{total}] {msg['received_at'].strftime('%Y-%m-%d')}  {msg['sender']}")
-    print(f"Subject: {msg['subject']}")
-    print(textwrap.fill(msg['body'][:800], width=80))
-    print("\n  u=urgent  r=respond  v=review  e=reference  i=ignore  s=skip  q=quit")
-    return input("> ").strip().lower()
-
-with get_conn() as conn:
-    rows = fetch_unlabeled(conn)
-    counts = {c: 0 for c in SHORTCUTS.values()}
-
-    for idx, msg in enumerate(rows, 1):
-        raw = prompt_label(msg, idx, len(rows))
-        if raw == "q":
-            break
-        if raw == "s":
-            continue
-        label = SHORTCUTS.get(raw, raw)
-        if label not in SHORTCUTS.values():
-            print("Unrecognized — skipping.")
-            continue
-        # writes current_label to message_embeddings (enables retrieval) + inserts a classifications audit row
-        apply_label(str(msg["id"]), label, source="human_confirmation")
-        counts[label] += 1
-        print(f"  ✓ {label}  ({', '.join(f'{k}: {v}' for k, v in counts.items() if v)})")
-```
-
-## Running the bootstrap script
-
-Make sure your local DB env vars are set (see CLAUDE.md → Local development), then:
+The labeling script works from what's already in `messages` + `message_embeddings`. If you have only a few emails (e.g. just what has arrived since Phase 1), backfill historical emails first.
 
 ```bash
 source .venv/bin/activate
+
+# Pull from specific folders by name — pick folders whose content matches the
+# categories you need
+python scripts/backfill_embeddings.py --folder inbox --since 90
+python scripts/backfill_embeddings.py --folder reply_required --since 3650
+python scripts/backfill_embeddings.py --folder urgent_attention --since 3650
+python scripts/backfill_embeddings.py --folder review_document --since 3650 --limit 100
+```
+
+**Folder selection strategy:**
+
+| Need more of... | Try these folders |
+|-----------------|-------------------|
+| `urgent` | `urgent_attention`, `inbox` (recent) |
+| `respond` | `reply_required`, `reply_needed`, `follow_up`, `schedule_meeting` |
+| `reference` | `Banking, Invoices and Payments`, `Medical`, `review_document` |
+| `ignore` / `review` | `Archive`, `no_action`, `Inbox` — these fill up naturally |
+
+Use `--limit N` on large folders to avoid pulling thousands of emails at once.
+
+---
+
+## Step 2: Run the labeling script
+
+```bash
 python scripts/bootstrap_labels.py
 ```
 
-Each email is displayed with sender, subject, received time, and a truncated body. Enter the first letter of the category (`u` / `r` / `v` / `e` / `i`) or the full word, then press Enter. Type `s` to skip an email without labeling it.
+Each email is displayed with sender, subject, received time, and up to 800 chars of body. Press a key to label, `s` to skip, `q` to quit. Progress is shown as a running tally per category.
 
-The script processes emails in reverse-chronological order and skips any message that already has a `current_label`.
+---
+
+## Faster labeling with `--ai-filter`
+
+The most efficient technique for hitting the per-category targets: let Claude pre-classify the unlabeled pool and only show you the emails it predicts as the target category.
+
+```bash
+# Only shows emails Claude predicts as urgent
+python scripts/bootstrap_labels.py --ai-filter urgent
+
+# Only shows emails Claude predicts as respond
+python scripts/bootstrap_labels.py --ai-filter respond
+```
+
+Claude's predictions are cached in the `classifications` table (`source='llm'`) after the first scan, so re-running is instant for already-scanned emails.
+
+**Workflow that worked:**
+
+1. Check counts: query `message_embeddings WHERE current_label IS NOT NULL GROUP BY current_label`
+2. Identify the category furthest below 12–15
+3. If not enough emails in DB for that category, backfill a relevant folder
+4. Run `--ai-filter <category>`, review the suggestions, label the correct ones
+5. Repeat until all five categories are at target
+
+---
+
+## Correcting mislabeled emails
+
+If you labeled something wrong, correct it directly:
+
+```python
+from services.labeling import apply_label
+apply_label("<message_id>", "correct_category", source="human_correction")
+```
+
+This overwrites `current_label` on the embedding and adds a new `classifications` row with `source="human_correction"`. Fix mistakes early — bad labels become retrieval examples that nudge future classifications in the wrong direction.
+
+---
 
 ## What happens under the hood
 
@@ -89,7 +104,9 @@ The script processes emails in reverse-chronological order and skips any message
 
 The retrieval query (`retrieve_neighbors`) only checks `current_label IS NOT NULL`. It never reads `source`. So `source` is purely an audit trail — useful later if you want to query "how often did my corrections disagree with the LLM?" but ignored by the pipeline today.
 
-Use `source="human_confirmation"` for bootstrap labels. It fits the existing contract and is semantically accurate — you're confirming a label, just doing it upfront rather than in response to a notification.
+**Note on importance:** Importance (P0–P3) is LLM-only metadata. It is stored in `classifications` by the AI scan but never prompted during human labeling. See `docs/labels.md` for the full importance model.
+
+---
 
 ## Checking your progress
 
@@ -101,7 +118,7 @@ GROUP BY current_label
 ORDER BY count DESC;
 ```
 
-Run this against the DB (via `/psql-database` or directly) to see how many labeled examples exist per category before running the pipeline.
+---
 
 ## Relationship to Phase 4
 
