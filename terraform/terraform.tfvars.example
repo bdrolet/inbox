@@ -6,3 +6,8 @@ client_secret    = "azure-app-client-secret"
 tenant_id        = "azure-tenant-id"
 openai_api_key   = "sk-..."
 msal_token_cache = "{\"Account\":{},\"AccessToken\":{},\"RefreshToken\":{},\"IdToken\":{},\"AppMetadata\":{}}"
+
+# Grafana Cloud OTLP — find in Grafana Cloud > My Account > OTLP endpoint
+# Token: python3 -c "import base64; print(base64.b64encode(b'<instance_id>:<api_key>').decode())"
+grafana_otlp_endpoint = "https://otlp-gateway-prod-<region>.grafana.net/otlp"
+grafana_otlp_token    = "base64(instance_id:api_key)"
