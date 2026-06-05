@@ -106,6 +106,12 @@ EOF
     systemctl start ntfy
   SCRIPT
 
+  # The startup script only runs at creation time — changes to it have no effect
+  # on the running VM. Ignore diffs to avoid forced replacement of a live instance.
+  lifecycle {
+    ignore_changes = [metadata_startup_script]
+  }
+
   depends_on = [google_project_service.apis]
 }
 

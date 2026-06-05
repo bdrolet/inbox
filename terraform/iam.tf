@@ -71,6 +71,13 @@ resource "google_pubsub_topic_iam_member" "webhook_cf_publisher" {
   member = "serviceAccount:${google_service_account.webhook_cf.email}"
 }
 
+# Publish to inbox-labels topic (human feedback from ntfy action buttons)
+resource "google_pubsub_topic_iam_member" "webhook_cf_labels_publisher" {
+  topic  = google_pubsub_topic.inbox_labels.name
+  role   = "roles/pubsub.publisher"
+  member = "serviceAccount:${google_service_account.webhook_cf.email}"
+}
+
 # ---------------------------------------------------------------------------
 # Renewal Cloud Function service account
 # ---------------------------------------------------------------------------
