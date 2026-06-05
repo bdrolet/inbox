@@ -167,6 +167,7 @@ data "archive_file" "process_source" {
   output_path = "${path.module}/.terraform/process.zip"
   excludes = [
     "terraform/.terraform",
+    "terraform/.terraform.lock.hcl",
     "terraform/terraform.tfvars",
     "terraform/terraform.tfstate",
     "terraform/terraform.tfstate.backup",
