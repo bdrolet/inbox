@@ -144,3 +144,34 @@ docker push $IMAGE
 ## Architecture
 
 See [docs/inbox-architecture.md](docs/inbox-architecture.md).
+
+```mermaid
+flowchart TD
+    GS[Graph subscription\nnew email] -->|change notification| WH[inbox-webhook CF\nPOST /]
+    WH -->|publish| MT[inbox-messages\nPub/Sub topic]
+    MT -->|trigger| PC[inbox-process CF\nprocess]
+
+    PC --> FE[fetch + normalize\nGraph API]
+    FE --> EM[embed + store\nbge-small + pgvector]
+    EM --> RT[retrieve neighbors\npgvector ANN]
+    RT --> CL[classify\nClaude Sonnet]
+    CL --> DB[(Cloud SQL\nclassifications)]
+    DB --> DP[dispatch]
+
+    DP --> AT[apply_tags\nOutlook color categories]
+    DP -->|URGENT| UN[ntfy push\nnotification]
+    DP -->|RESPOND| RF[move → reply_required\nfolder]
+    DP -->|REVIEW| RVF[move → review\nfolder]
+    DP -->|REFERENCE\nIGNORE| AR[move → Archive\nfolder]
+
+    UN -->|action button tap| WH2[inbox-webhook CF\nPOST /label]
+    WH2 -->|publish| LT[inbox-labels\nPub/Sub topic]
+    LT -->|trigger| LC[inbox-label CF\nlabel]
+    LC --> VS[(vector store\ncurrent_label)]
+
+    style UN fill:#f96,color:#000
+    style WH2 fill:#f96,color:#000
+    style LT fill:#f96,color:#000
+    style LC fill:#f96,color:#000
+    style VS fill:#f96,color:#000
+```
