@@ -39,6 +39,7 @@ def run(notification: dict, model) -> None:
             return
 
         msg_id = messages.insert(conn, msg)
+        msg["id"] = msg_id  # make DB UUID available to action handlers (ntfy action buttons)
         senders.upsert(conn, msg["sender"], msg["source"])
         sender_ctx = senders.get(conn, msg["sender"], msg["source"])
 

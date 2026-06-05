@@ -12,7 +12,7 @@ def notify(message_id: str, subject: str, sender: str, reasoning: str, importanc
     if not NTFY_TOPIC:
         return
 
-    headers = {}
+    headers = {"Content-Type": "application/json"}
     if NTFY_TOKEN:
         headers["Authorization"] = f"Bearer {NTFY_TOKEN}"
 
