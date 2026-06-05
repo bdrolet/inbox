@@ -19,7 +19,7 @@ def notify(message_id: str, subject: str, sender: str, reasoning: str, importanc
     webhook_url = os.environ["WEBHOOK_URL"]
     action_headers = {"Authorization": f"Bearer {WEBHOOK_LABEL_TOKEN}"} if WEBHOOK_LABEL_TOKEN else {}
     httpx.post(
-        f"{NTFY_BASE_URL}/{NTFY_TOPIC}",
+        f"{NTFY_BASE_URL}/",
         headers=headers,
         json={
             "topic": NTFY_TOPIC,
