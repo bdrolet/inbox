@@ -392,136 +392,77 @@ End-to-end new classification pipeline live. 5 categories, tags, retrieval-augme
 
 ---
 
-## Phase 4: Feedback mechanism + action handlers — ⬅️ In Progress
+## Phase 4: Feedback mechanism + action handlers — ✅ Complete
 
-**What it does**: All five categories drive Outlook folder moves or push notifications. Human corrections via ntfy action buttons flow back to the vector store.
+**What it does**: All five categories drive Outlook folder moves or push notifications. Emails are tagged with Outlook color categories. Human corrections via ntfy action buttons flow back to the vector store.
 
-### Status
+### What was built
 
-| Component | Status | Notes |
-|-----------|--------|-------|
-| ntfy server infrastructure | ✅ Done | Self-hosted on GCP e2-micro at `ntfy.drolet.ai` |
-| `clients/ntfy.py` | ✅ Done | Bearer token auth, importance in title, action buttons |
-| Terraform: VM + firewall + CF env vars | ✅ Done | `NTFY_BASE_URL`, `NTFY_TOPIC`, `NTFY_TOKEN` wired |
-| Set `ntfy_topic` + deploy CF | ⬜ Pending | Add to `terraform.tfvars`, run `/deploy-inbox` |
-| `services/archiving.py` | ⬜ Pending | Outlook folder moves via Graph API |
-| `handlers/actions/` | ⬜ Pending | Per-category dispatch |
-| `/label` webhook route | ⬜ Pending | Receives ntfy action button callbacks |
-| `inbox-labels` Pub/Sub topic | ⬜ Pending | Routes human feedback to processor |
-| `services/labeling.py` | ⬜ Pending | Writes `current_label` to `message_embeddings` |
+| Component | File(s) |
+|-----------|---------|
+| Graph client singleton | `clients/graph.py` — mirrors `clients/claude.py`; headless in CF, interactive locally |
+| Outlook folder moves + tagging | `services/archiving.py` — `move_to_folder()` and `apply_tags()` |
+| `tag_message()` on Graph client | `clients/azure/graph_email_client.py` — PATCHes Outlook color categories onto messages |
+| Per-category action handlers | `handlers/actions/urgent.py`, `respond.py`, `review.py`, `reference.py`, `ignore.py` |
+| Action dispatcher | `handlers/actions/dispatch.py` — tags first, then routes to category handler |
+| `/label` webhook route | `functions/webhook/main.py` — validates bearer token, publishes to `inbox-labels` |
+| `inbox-labels` Pub/Sub topic | `terraform/pubsub.tf` |
+| `inbox-label` Cloud Function | `terraform/cloud_functions.tf` — 512Mi, entry point `label`, triggered by `inbox-labels` |
+| `label()` CF entry point | `main.py` — separate from `process()`; heavy imports deferred so label CF starts at ~50Mi |
+| Webhook label auth | `WEBHOOK_LABEL_TOKEN` secret — bearer token embedded in ntfy action button headers |
 
----
+### Folder mapping
 
-### Done: ntfy self-hosted server
+| Category | Outlook folder |
+|----------|---------------|
+| `urgent` | ntfy push notification (no move) |
+| `respond` | `reply_required` |
+| `review` | `review` |
+| `reference` | `Archive` |
+| `ignore` | `Archive` |
 
-ntfy runs on a GCP e2-micro VM (free tier) at `https://ntfy.drolet.ai`:
-- TLS via Let's Encrypt (cert valid 2026-09-02, auto-renews via cron)
-- `auth-default-access: deny-all` — admin user `ben`, access token in Secret Manager (`ntfy-token`)
-- `upstream-base-url: https://ntfy.sh` — required for iOS APNs delivery
-- VM provisioned via `terraform/ntfy.tf`; use `/deploy-ntfy` skill to reprovision or bootstrap
+### `clients/ntfy.py`
 
-### Done: `clients/ntfy.py`
-
-Uses self-hosted server with Bearer token auth. Importance included in title. No-ops when `NTFY_TOPIC` is unset.
-
-```python
-def notify(message_id: str, subject: str, sender: str, reasoning: str, importance: str) -> None:
-    if not NTFY_TOPIC:
-        return
-    headers = {"Authorization": f"Bearer {NTFY_TOKEN}"} if NTFY_TOKEN else {}
-    httpx.post(
-        f"{NTFY_BASE_URL}/{NTFY_TOPIC}",
-        headers=headers,
-        json={
-            "topic": NTFY_TOPIC,
-            "title": f"[{importance.upper()}] {subject}",
-            "message": f"From: {sender}\n\n{reasoning}",
-            "actions": [
-                {"action": "http", "label": "Correct", "url": f"{WEBHOOK_URL}/label?id={message_id}&label=urgent&source=human_confirmation"},
-                {"action": "http", "label": "Respond", "url": f"{WEBHOOK_URL}/label?id={message_id}&label=respond&source=human_correction"},
-                {"action": "http", "label": "Review",  "url": f"{WEBHOOK_URL}/label?id={message_id}&label=review&source=human_correction"},
-            ],
-        },
-        timeout=10,
-    )
-```
-
-### Pending: action handlers
-
-| File | What it does |
-|------|-------------|
-| `services/archiving.py` | `move_to_folder(msg, folder_name)` via Graph API |
-| `handlers/actions/dispatch.py` | Routes `result.category` to the right handler |
-| `handlers/actions/urgent.py` | Calls `clients/ntfy.notify()` |
-| `handlers/actions/respond.py` | `archiving.move_to_folder(msg, "To Respond")` |
-| `handlers/actions/review.py` | `archiving.move_to_folder(msg, "To Review")` |
-| `handlers/actions/reference.py` | `archiving.move_to_folder(msg, "Archive")` |
-| `handlers/actions/ignore.py` | `archiving.move_to_folder(msg, "Archive")` |
-
-### Pending: `/label` route in `functions/webhook/main.py`
+Posts to the ntfy **root endpoint** (`/`) with `Content-Type: application/json` so the payload is parsed as a structured notification. Topic is in the JSON body. Importance in title. Three action buttons (ntfy iOS limit). `WEBHOOK_LABEL_TOKEN` injected as `Authorization` header on each action button so `/label` callbacks are authenticated.
 
 ```python
-if request.path == "/label":
-    publisher.publish(
-        LABELS_TOPIC,
-        json.dumps({
-            "message_id": request.args["id"],
-            "label": request.args["label"],
-            "source": request.args["source"],
-        }).encode(),
-    )
-    return "", 202
+httpx.post(
+    f"{NTFY_BASE_URL}/",
+    headers={"Content-Type": "application/json", "Authorization": f"Bearer {NTFY_TOKEN}"},
+    json={
+        "topic": NTFY_TOPIC,
+        "title": f"[{importance.upper()}] {subject}",
+        "message": f"From: {sender}\n\n{reasoning}",
+        "actions": [
+            {"action": "http", "label": "Confirm", "url": f"{webhook_url}/label?id={message_id}&label=urgent&source=human_confirmation", "headers": {"Authorization": f"Bearer {WEBHOOK_LABEL_TOKEN}"}},
+            {"action": "http", "label": "Respond", "url": f"{webhook_url}/label?id={message_id}&label=respond&source=human_correction", "headers": {"Authorization": f"Bearer {WEBHOOK_LABEL_TOKEN}"}},
+            {"action": "http", "label": "Review",  "url": f"{webhook_url}/label?id={message_id}&label=review&source=human_correction",  "headers": {"Authorization": f"Bearer {WEBHOOK_LABEL_TOKEN}"}},
+        ],
+    },
+)
 ```
 
-### Pending: `inbox-labels` Pub/Sub topic + CF routing
-
-Add to `terraform/pubsub.tf` and `terraform/cloud_functions.tf`:
-- `inbox-labels` topic
-- Event trigger on `inbox-labels` in `main.py`
-
-Route by originating topic:
-
-```python
-@functions_framework.cloud_event
-def process(cloud_event):
-    source = cloud_event.get("source", "")
-    data = base64.b64decode(cloud_event.data["message"]["data"]).decode()
-    payload = json.loads(data)
-
-    if "inbox-labels" in source:
-        labeling.apply_label(
-            message_id=payload["message_id"],
-            label=payload["label"],
-            source=payload["source"],
-        )
-    else:
-        handle_message(payload)
-```
-
-### Pending: `services/labeling.py`
-
-```python
-def apply_label(message_id: str, label: str, source: str) -> None:
-    """source is 'human_confirmation' or 'human_correction'."""
-    with db.transaction():
-        classifications.insert(message_id=message_id, category=label, source=source)
-        embeddings.set_current_label(message_id, label)
-```
-
-`set_current_label` sets `current_label` + `updated_at` in `message_embeddings`, making the embedding eligible as a retrieval example.
-
-### Environment variables (all wired in Terraform)
+### Environment variables
 
 | Variable | Secret / value |
 |----------|---------------|
 | `NTFY_BASE_URL` | `https://ntfy.drolet.ai` |
-| `NTFY_TOPIC` | Set in `terraform.tfvars` (pick a topic name, subscribe in app) |
+| `NTFY_TOPIC` | `inbox` (set in `terraform.tfvars`) |
 | `NTFY_TOKEN` | Secret Manager `ntfy-token` |
 | `WEBHOOK_URL` | `https://inbox-webhook-aizbgjlava-uc.a.run.app` |
+| `WEBHOOK_LABEL_TOKEN` | Secret Manager `webhook-label-token` — injected into both `inbox-process` and `inbox-webhook` CFs |
+
+### Feedback loop
+
+1. Urgent message classified → `dispatch()` tags it and fires ntfy push
+2. User taps action button → POST to `/label?id=<uuid>&label=<category>&source=human_confirmation`
+3. Webhook validates bearer token, publishes to `inbox-labels`
+4. `inbox-label` CF calls `labeling.apply_label()` → writes `current_label` to `message_embeddings`
+5. Next similar message retrieves this embedding as a labeled example
 
 ### Phase 4 deliverable
 
-All five categories drive folder moves or notifications. Urgent messages push to phone with action buttons. Tapping a button corrects the label and feeds the vector store.
+All five categories drive folder moves or notifications. Urgent messages push to phone with action buttons. Tapping a button corrects the label and feeds the vector store. Emails are tagged with Outlook color categories reflecting category, importance, and classification tags.
 
 ---
 

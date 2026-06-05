@@ -6,9 +6,9 @@ See `docs/inbox-architecture.md` for the full design and `docs/v1-implementation
 
 ## Project state
 
-**Phase 1 complete** — event-driven Cloud Function processor receiving live emails, writing to Cloud SQL. Graph subscription active. The existing Cloud Run Job (`scripts/analyze_emails.py`) stays as a daily fallback until Phase 5.
+**Phases 1–4 complete** — full classification pipeline live: emails received via Graph webhooks, embedded with bge-small, classified by Claude Sonnet with retrieval-augmented context, folder-moved in Outlook, tagged with Outlook color categories, and urgent messages push to phone via ntfy with action buttons that feed corrections back to the vector store.
 
-Ready to start **Phase 2** (bge embeddings + pgvector retrieval).
+Ready to start **Phase 5** (bootstrap labels, decommission Cloud Run Job).
 
 ## Stack
 
@@ -18,9 +18,9 @@ Ready to start **Phase 2** (bge embeddings + pgvector retrieval).
 | **Worker** | Cloud Function `inbox-process` (Pub/Sub event trigger, scale-to-zero) |
 | **Database** | Cloud SQL Postgres 16 + pgvector, `bens-project-462804:us-central1:inbox`, db `app` |
 | **Email source** | Microsoft Graph API (Outlook/Office 365), MSAL auth |
-| **LLM** | Claude Sonnet via Anthropic API (Phase 3+); gpt-4o-mini currently |
+| **LLM** | Claude Sonnet via Anthropic API |
 | **Trigger** | Graph change notifications → webhook CF → Pub/Sub → processor CF |
-| **Notifications** | ntfy.sh (Phase 4) |
+| **Notifications** | Self-hosted ntfy at `ntfy.drolet.ai`, topic `inbox` |
 | **GCP infra** | `terraform/` (Cloud Functions, Pub/Sub, Cloud SQL, Scheduler, Secrets, IAM) |
 
 ## Code layout
@@ -126,19 +126,21 @@ CLOUD_SQL_CONNECTION_NAME=bens-project-462804:us-central1:inbox \
 | `client-secret` | Graph API auth |
 | `tenant-id` | Graph API auth |
 | `openai-api-key` | Existing Cloud Run Job (removed Phase 5) |
-| `anthropic-api-key` | Processor CF (Phase 3+) |
+| `anthropic-api-key` | Processor CF |
 | `msal-token-cache` | Processor CF + renew CF — MSAL refresh token |
 | `inbox-db-password` | Processor CF — Cloud SQL password |
+| `ntfy-token` | Processor CF — ntfy server access token |
+| `webhook-label-token` | Processor CF + webhook CF — authenticates `/label` action button callbacks |
 
 ## Migration phases
 
 | Phase | Status | What it adds |
 |-------|--------|-------------|
 | 1 | **Complete** | DB schema, processor CF, webhook CF, Cloud SQL, Pub/Sub, Graph subscription |
-| 2 | **Next** | bge-small embeddings + pgvector retrieval (logged, not used in prompt) |
-| 3 | Pending | Claude Sonnet, 5-category system, retrieval-augmented prompt |
-| 4 | Pending | ntfy.sh notifications, Outlook folder moves, human feedback loop |
-| 5 | Pending | Bootstrap labels, decommission Cloud Run Job |
+| 2 | **Complete** | bge-small embeddings + pgvector retrieval |
+| 3 | **Complete** | Claude Sonnet, 5-category + P0–P3 importance, retrieval-augmented prompt |
+| 4 | **Complete** | ntfy push notifications, Outlook folder moves + color-category tagging, human feedback loop |
+| 5 | **Next** | Bootstrap labels, decommission Cloud Run Job |
 
 ## Known issues / gotchas
 
