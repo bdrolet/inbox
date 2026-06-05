@@ -63,6 +63,14 @@ resource "google_secret_manager_secret_iam_member" "process_cf_ntfy_token" {
   member    = "serviceAccount:${google_service_account.process_cf.email}"
 }
 
+# Read the Grafana OTLP endpoint and token from Secret Manager
+resource "google_secret_manager_secret_iam_member" "process_cf_grafana" {
+  for_each  = toset(["grafana-otlp-endpoint", "grafana-otlp-token"])
+  secret_id = google_secret_manager_secret.secrets[each.key].secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.process_cf.email}"
+}
+
 # ---------------------------------------------------------------------------
 # Webhook Cloud Function service account
 # ---------------------------------------------------------------------------
@@ -90,6 +98,14 @@ resource "google_pubsub_topic_iam_member" "webhook_cf_labels_publisher" {
   topic  = google_pubsub_topic.inbox_labels.name
   role   = "roles/pubsub.publisher"
   member = "serviceAccount:${google_service_account.webhook_cf.email}"
+}
+
+# Read the Grafana OTLP endpoint and token from Secret Manager
+resource "google_secret_manager_secret_iam_member" "webhook_cf_grafana" {
+  for_each  = toset(["grafana-otlp-endpoint", "grafana-otlp-token"])
+  secret_id = google_secret_manager_secret.secrets[each.key].secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.webhook_cf.email}"
 }
 
 # ---------------------------------------------------------------------------

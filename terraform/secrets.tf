@@ -8,6 +8,8 @@ locals {
     "msal-token-cache"      = var.msal_token_cache
     "inbox-db-password"     = var.db_password
     "webhook-label-token"   = var.webhook_label_token
+    "grafana-otlp-endpoint" = var.grafana_otlp_endpoint
+    "grafana-otlp-token"    = var.grafana_otlp_token
   }
 }
 

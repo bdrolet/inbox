@@ -4,6 +4,7 @@ import os
 
 import anthropic
 
+import clients.otel as otel
 from models.types import Category, Classification, Importance
 
 logger = logging.getLogger(__name__)
@@ -37,13 +38,16 @@ def classify(system_prompt: str, user_message: str) -> Classification:
     )
 
     usage = response.usage
+    cache_creation = getattr(usage, "cache_creation_input_tokens", 0) or 0
+    cache_read = getattr(usage, "cache_read_input_tokens", 0) or 0
     logger.debug(
         "Claude usage — in: %d, out: %d, cache_create: %d, cache_read: %d",
-        usage.input_tokens,
-        usage.output_tokens,
-        getattr(usage, "cache_creation_input_tokens", 0) or 0,
-        getattr(usage, "cache_read_input_tokens", 0) or 0,
+        usage.input_tokens, usage.output_tokens, cache_creation, cache_read,
     )
+    otel.claude_tokens.add(usage.input_tokens, {"token_type": "input"})
+    otel.claude_tokens.add(usage.output_tokens, {"token_type": "output"})
+    otel.claude_tokens.add(cache_read, {"token_type": "cache_read"})
+    otel.claude_tokens.add(cache_creation, {"token_type": "cache_creation"})
 
     text = response.content[0].text.strip()
 

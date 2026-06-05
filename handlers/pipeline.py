@@ -2,7 +2,11 @@
 Full message processing pipeline: ingest → embed → classify → store → dispatch.
 """
 import logging
+import time
 
+from opentelemetry.trace import StatusCode
+
+import clients.otel as otel
 from clients.graph import get_graph_client
 from clients.claude import classify
 from clients.db import get_conn
@@ -18,66 +22,118 @@ logger = logging.getLogger(__name__)
 _MODEL_NAME = "claude-sonnet-4-6"
 
 
-def run(notification: dict, model) -> None:
+def run(notification: dict, model, context=None) -> None:
     message_id = notification.get("resourceData", {}).get("id")
     if not message_id:
         logger.warning("Notification missing resourceData.id — skipping")
         return
 
-    graph_client = get_graph_client()
+    tracer = otel.get_tracer()
+    pipeline_start = time.monotonic()
 
-    email = fetch(message_id, graph_client)
-    if email is None:
-        logger.warning(f"Could not fetch email {message_id} — skipping")
-        return
+    with tracer.start_as_current_span("inbox.process", context=context) as root_span:
+        try:
+            graph_client = get_graph_client()
 
-    msg = normalize(email, raw=notification)
+            # Fetch
+            t0 = time.monotonic()
+            with tracer.start_as_current_span("inbox.fetch") as span:
+                span.set_attribute("message_id", message_id)
+                email = fetch(message_id, graph_client)
+            otel.stage_duration.record((time.monotonic() - t0) * 1000, {"stage": "fetch"})
 
-    with get_conn() as conn:
-        if messages.exists(conn, msg["source"], msg["external_id"]):
-            logger.debug(f"Duplicate {msg['external_id']} — skipping")
-            return
+            if email is None:
+                logger.warning(f"Could not fetch email {message_id} — skipping")
+                return
 
-        msg_id = messages.insert(conn, msg)
-        msg["id"] = msg_id  # make DB UUID available to action handlers (ntfy action buttons)
-        senders.upsert(conn, msg["sender"], msg["source"])
-        sender_ctx = senders.get(conn, msg["sender"], msg["source"])
+            msg = normalize(email, raw=notification)
 
-        cleaned = text_for_embedding(msg)
-        vec = embed_and_store(conn, msg_id, cleaned, model)
-        conn.commit()  # persist message + embedding before LLM call
+            with get_conn() as conn:
+                if messages.exists(conn, msg["source"], msg["external_id"]):
+                    logger.debug(f"Duplicate {msg['external_id']} — skipping")
+                    otel.emails_duplicates.add(1)
+                    return
 
-        neighbors = retrieve_neighbors(conn, vec, exclude_id=msg_id)
-        aggregates = aggregate_neighbors(neighbors)
-        top_examples = neighbors[:3]
+                msg_id = messages.insert(conn, msg)
+                msg["id"] = msg_id  # make DB UUID available to action handlers (ntfy action buttons)
+                senders.upsert(conn, msg["sender"], msg["source"])
+                sender_ctx = senders.get(conn, msg["sender"], msg["source"])
 
-        logger.debug(
-            "Classifying %s — %d labeled neighbors, aggregates: %s",
-            msg_id, len(neighbors), aggregates,
-        )
-        system_prompt, user_message = build_prompt(msg, aggregates, top_examples, sender_ctx)
-        result = classify(system_prompt, user_message)
+                # Embed
+                t0 = time.monotonic()
+                with tracer.start_as_current_span("inbox.embed") as span:
+                    cleaned = text_for_embedding(msg)
+                    span.set_attribute("text_length", len(cleaned))
+                    vec = embed_and_store(conn, msg_id, cleaned, model)
+                otel.stage_duration.record((time.monotonic() - t0) * 1000, {"stage": "embed"})
 
-        classifications.insert(
-            conn,
-            message_id=msg_id,
-            category=result.category.value,
-            source="llm",
-            confidence=result.confidence,
-            alternatives=result.alternatives,
-            tags=result.tags,
-            reasoning=result.reasoning,
-            model=_MODEL_NAME,
-            prompt_version=PROMPT_VERSION,
-            importance=result.importance.value,
-        )
-        conn.commit()
+                conn.commit()  # persist message + embedding before LLM call
 
-    dispatch(result, msg)
+                # Retrieve neighbors
+                t0 = time.monotonic()
+                with tracer.start_as_current_span("inbox.retrieve_neighbors") as span:
+                    neighbors = retrieve_neighbors(conn, vec, exclude_id=msg_id)
+                    span.set_attribute("neighbor_count", len(neighbors))
+                    labeled = [n for n in neighbors if n.get("current_label")]
+                    span.set_attribute("labeled_count", len(labeled))
+                otel.stage_duration.record((time.monotonic() - t0) * 1000, {"stage": "retrieve_neighbors"})
 
-    logger.info(
-        "Processed %s — %r: %r → %s (%s, %.2f) | %d labeled neighbors",
-        msg_id, msg["sender"], msg["subject"],
-        result.category.value, result.importance.value, result.confidence,
-        len(neighbors),
-    )
+                aggregates = aggregate_neighbors(neighbors)
+                top_examples = neighbors[:3]
+
+                logger.debug(
+                    "Classifying %s — %d labeled neighbors, aggregates: %s",
+                    msg_id, len(neighbors), aggregates,
+                )
+
+                # Classify
+                t0 = time.monotonic()
+                with tracer.start_as_current_span("inbox.classify") as span:
+                    system_prompt, user_message = build_prompt(msg, aggregates, top_examples, sender_ctx)
+                    result = classify(system_prompt, user_message)
+                    span.set_attribute("category", result.category.value)
+                    span.set_attribute("importance", result.importance.value)
+                    span.set_attribute("confidence", result.confidence)
+                    span.set_attribute("model", _MODEL_NAME)
+                otel.stage_duration.record((time.monotonic() - t0) * 1000, {"stage": "classify"})
+
+                classifications.insert(
+                    conn,
+                    message_id=msg_id,
+                    category=result.category.value,
+                    source="llm",
+                    confidence=result.confidence,
+                    alternatives=result.alternatives,
+                    tags=result.tags,
+                    reasoning=result.reasoning,
+                    model=_MODEL_NAME,
+                    prompt_version=PROMPT_VERSION,
+                    importance=result.importance.value,
+                )
+                conn.commit()
+
+            # Dispatch
+            t0 = time.monotonic()
+            with tracer.start_as_current_span("inbox.dispatch") as span:
+                span.set_attribute("category", result.category.value)
+                dispatch(result, msg)
+            otel.stage_duration.record((time.monotonic() - t0) * 1000, {"stage": "dispatch"})
+
+            total_ms = (time.monotonic() - pipeline_start) * 1000
+            otel.stage_duration.record(total_ms, {"stage": "total"})
+            otel.emails_processed.add(1, {"category": result.category.value, "importance": result.importance.value})
+            otel.confidence_hist.record(result.confidence, {"category": result.category.value})
+            otel.neighbors_hist.record(len(neighbors))
+
+            logger.info(
+                "Processed %s — %r: %r → %s (%s, %.2f) | %d labeled neighbors",
+                msg_id, msg["sender"], msg["subject"],
+                result.category.value, result.importance.value, result.confidence,
+                len(neighbors),
+            )
+
+        except Exception as e:
+            root_span.set_status(StatusCode.ERROR)
+            root_span.record_exception(e)
+            otel.pipeline_errors.add(1, {"stage": "pipeline"})
+            raise

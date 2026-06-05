@@ -1,6 +1,7 @@
 import logging
 from typing import Optional
 
+import clients.otel as otel
 from clients.db import get_conn
 from repo import classifications
 from repo.embeddings import set_current_importance, set_current_label
@@ -13,6 +14,7 @@ def apply_label(
     label: str,
     source: str,
     importance: Optional[str] = None,
+    context=None,
 ) -> None:
     """
     Record a human label (confirmation or correction) for a message.
@@ -31,3 +33,4 @@ def apply_label(
             set_current_importance(conn, message_id, importance)
         conn.commit()
     logger.debug("Label %r applied and embedding updated for %s", label, message_id)
+    otel.human_feedback.add(1, {"source": source, "category": label})

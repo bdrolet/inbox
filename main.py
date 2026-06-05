@@ -14,6 +14,7 @@ Required env vars for process:
   MSAL_SECRET_NAME            — Secret Manager secret for MSAL cache (default: msal-token-cache)
   CLIENT_ID / CLIENT_SECRET / TENANT_ID — Azure app credentials
   NTFY_BASE_URL / NTFY_TOPIC / NTFY_TOKEN / WEBHOOK_URL / WEBHOOK_LABEL_TOKEN — ntfy
+  GRAFANA_OTLP_ENDPOINT / GRAFANA_OTLP_TOKEN — Grafana Cloud OTLP (optional)
 
 Heavy imports (PyTorch via clients.bge, handlers.pipeline) are deferred inside process()
 so the inbox-label CF cold-starts without loading the model (~518 MiB).
@@ -24,10 +25,14 @@ import logging
 
 import functions_framework
 from cloudevents.http import CloudEvent
+from opentelemetry.propagate import extract
 
+import clients.otel as otel
 from services import labeling
 
 logger = logging.getLogger(__name__)
+
+otel.setup_telemetry("inbox-process")
 
 _model = None
 
@@ -45,20 +50,31 @@ def process(cloud_event: CloudEvent) -> None:
     from handlers.pipeline import run as run_pipeline
     data = base64.b64decode(cloud_event.data["message"]["data"]).decode()
     notification = json.loads(data)
-    run_pipeline(notification, _get_model())
+    attrs = cloud_event.data["message"].get("attributes", {})
+    ctx = extract(attrs)
+    try:
+        run_pipeline(notification, _get_model(), context=ctx)
+    finally:
+        otel.flush()
 
 
 @functions_framework.cloud_event
 def label(cloud_event: CloudEvent) -> None:
     data = base64.b64decode(cloud_event.data["message"]["data"]).decode()
     payload = json.loads(data)
+    attrs = cloud_event.data["message"].get("attributes", {})
+    ctx = extract(attrs)
     logger.info(
         "Label feedback received: message_id=%s label=%s source=%s",
         payload.get("message_id"), payload.get("label"), payload.get("source"),
     )
-    labeling.apply_label(
-        message_id=payload["message_id"],
-        label=payload["label"],
-        source=payload["source"],
-    )
-    logger.info("Label applied — message_id=%s", payload["message_id"])
+    try:
+        labeling.apply_label(
+            message_id=payload["message_id"],
+            label=payload["label"],
+            source=payload["source"],
+            context=ctx,
+        )
+        logger.info("Label applied — message_id=%s", payload["message_id"])
+    finally:
+        otel.flush()

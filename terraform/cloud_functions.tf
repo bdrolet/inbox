@@ -54,6 +54,18 @@ resource "google_cloudfunctions2_function" "webhook" {
       secret     = google_secret_manager_secret.secrets["webhook-label-token"].secret_id
       version    = "latest"
     }
+    secret_environment_variables {
+      key        = "GRAFANA_OTLP_ENDPOINT"
+      project_id = var.project_id
+      secret     = google_secret_manager_secret.secrets["grafana-otlp-endpoint"].secret_id
+      version    = "latest"
+    }
+    secret_environment_variables {
+      key        = "GRAFANA_OTLP_TOKEN"
+      project_id = var.project_id
+      secret     = google_secret_manager_secret.secrets["grafana-otlp-token"].secret_id
+      version    = "latest"
+    }
   }
 
   depends_on = [google_project_service.apis]
@@ -155,6 +167,7 @@ data "archive_file" "process_source" {
   output_path = "${path.module}/.terraform/process.zip"
   excludes = [
     "terraform/.terraform",
+    "terraform/.terraform.lock.hcl",
     "terraform/terraform.tfvars",
     "terraform/terraform.tfstate",
     "terraform/terraform.tfstate.backup",
@@ -207,6 +220,9 @@ resource "google_cloudfunctions2_function" "process" {
       NTFY_BASE_URL              = "https://${var.ntfy_domain}"
       NTFY_TOPIC                 = var.ntfy_topic
       WEBHOOK_URL                = google_cloudfunctions2_function.webhook.service_config[0].uri
+      OTEL_BSP_MAX_QUEUE_SIZE    = "16384"
+      OTEL_BSP_SCHEDULE_DELAY    = "2000"
+      OTEL_BSP_EXPORT_TIMEOUT    = "30000"
     }
     secret_environment_variables {
       key        = "POSTGRES_PASSWORD"
@@ -248,6 +264,18 @@ resource "google_cloudfunctions2_function" "process" {
       key        = "WEBHOOK_LABEL_TOKEN"
       project_id = var.project_id
       secret     = google_secret_manager_secret.secrets["webhook-label-token"].secret_id
+      version    = "latest"
+    }
+    secret_environment_variables {
+      key        = "GRAFANA_OTLP_ENDPOINT"
+      project_id = var.project_id
+      secret     = google_secret_manager_secret.secrets["grafana-otlp-endpoint"].secret_id
+      version    = "latest"
+    }
+    secret_environment_variables {
+      key        = "GRAFANA_OTLP_TOKEN"
+      project_id = var.project_id
+      secret     = google_secret_manager_secret.secrets["grafana-otlp-token"].secret_id
       version    = "latest"
     }
   }
@@ -294,11 +322,26 @@ resource "google_cloudfunctions2_function" "label" {
       CLOUD_SQL_CONNECTION_NAME = google_sql_database_instance.inbox.connection_name
       POSTGRES_USER             = var.db_user
       POSTGRES_DB               = "app"
+      OTEL_BSP_MAX_QUEUE_SIZE   = "16384"
+      OTEL_BSP_SCHEDULE_DELAY   = "2000"
+      OTEL_BSP_EXPORT_TIMEOUT   = "30000"
     }
     secret_environment_variables {
       key        = "POSTGRES_PASSWORD"
       project_id = var.project_id
       secret     = google_secret_manager_secret.secrets["inbox-db-password"].secret_id
+      version    = "latest"
+    }
+    secret_environment_variables {
+      key        = "GRAFANA_OTLP_ENDPOINT"
+      project_id = var.project_id
+      secret     = google_secret_manager_secret.secrets["grafana-otlp-endpoint"].secret_id
+      version    = "latest"
+    }
+    secret_environment_variables {
+      key        = "GRAFANA_OTLP_TOKEN"
+      project_id = var.project_id
+      secret     = google_secret_manager_secret.secrets["grafana-otlp-token"].secret_id
       version    = "latest"
     }
   }

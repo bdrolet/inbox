@@ -110,3 +110,17 @@ variable "webhook_label_token" {
   type        = string
   sensitive   = true
 }
+
+variable "grafana_otlp_endpoint" {
+  description = "Grafana Cloud OTLP gateway URL (e.g. https://otlp-gateway-prod-us-central-0.grafana.net/otlp)"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "grafana_otlp_token" {
+  description = "Grafana Cloud OTLP Basic Auth token: base64(instance_id:api_key)"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
