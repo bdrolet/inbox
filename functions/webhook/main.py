@@ -49,6 +49,12 @@ def webhook(request):
 
     # Human feedback from ntfy action buttons
     if request.path == "/label":
+        expected = os.environ.get("WEBHOOK_LABEL_TOKEN")
+        if expected:
+            auth = request.headers.get("Authorization", "")
+            if auth != f"Bearer {expected}":
+                logger.warning("Rejected /label request — invalid Authorization header")
+                return "", 403
         message_id = request.args.get("id")
         label      = request.args.get("label")
         source     = request.args.get("source", "human_correction")

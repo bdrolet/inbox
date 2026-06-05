@@ -48,6 +48,12 @@ resource "google_cloudfunctions2_function" "webhook" {
       GCP_PROJECT_ID       = var.project_id
       WEBHOOK_CLIENT_STATE = "inbox-webhook"
     }
+    secret_environment_variables {
+      key        = "WEBHOOK_LABEL_TOKEN"
+      project_id = var.project_id
+      secret     = google_secret_manager_secret.secrets["webhook-label-token"].secret_id
+      version    = "latest"
+    }
   }
 
   depends_on = [google_project_service.apis]
@@ -236,6 +242,12 @@ resource "google_cloudfunctions2_function" "process" {
       key        = "NTFY_TOKEN"
       project_id = var.project_id
       secret     = data.google_secret_manager_secret.ntfy_token.secret_id
+      version    = "latest"
+    }
+    secret_environment_variables {
+      key        = "WEBHOOK_LABEL_TOKEN"
+      project_id = var.project_id
+      secret     = google_secret_manager_secret.secrets["webhook-label-token"].secret_id
       version    = "latest"
     }
   }
