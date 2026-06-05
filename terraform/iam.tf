@@ -49,6 +49,13 @@ resource "google_secret_manager_secret_iam_member" "process_cf_anthropic" {
   member    = "serviceAccount:${google_service_account.process_cf.email}"
 }
 
+# Read the webhook label token (to embed in ntfy action button headers)
+resource "google_secret_manager_secret_iam_member" "process_cf_webhook_label_token" {
+  secret_id = google_secret_manager_secret.secrets["webhook-label-token"].secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.process_cf.email}"
+}
+
 # Read the ntfy access token from Secret Manager
 resource "google_secret_manager_secret_iam_member" "process_cf_ntfy_token" {
   secret_id = data.google_secret_manager_secret.ntfy_token.secret_id
