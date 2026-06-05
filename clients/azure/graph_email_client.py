@@ -422,6 +422,23 @@ class GraphEmailClient:
                     return found
             raise
 
+    def tag_message(self, message_id: str, categories: list[str]) -> bool:
+        """Set Outlook color categories on a message. Categories must exist in the mailbox
+        master list to display with colors; PATCH succeeds regardless."""
+        try:
+            response = requests.patch(
+                f"{self.graph_endpoint}/me/messages/{message_id}",
+                headers=self.get_headers(),
+                json={"categories": categories},
+            )
+            response.raise_for_status()
+            logger.info("Tagged message %s with %s", message_id, categories)
+            return True
+        except requests.exceptions.RequestException as e:
+            detail = e.response.text[:500] if e.response is not None else ""
+            logger.error("Failed to tag message %s: %s %s", message_id, e, detail)
+            return False
+
     def move_message_to_action_folder(self, message_id: str, folder_display_name: str) -> bool:
         """
         Move a message to the folder named folder_display_name (e.g. reply_required).

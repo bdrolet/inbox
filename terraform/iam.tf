@@ -49,6 +49,13 @@ resource "google_secret_manager_secret_iam_member" "process_cf_anthropic" {
   member    = "serviceAccount:${google_service_account.process_cf.email}"
 }
 
+# Read the webhook label token (to embed in ntfy action button headers)
+resource "google_secret_manager_secret_iam_member" "process_cf_webhook_label_token" {
+  secret_id = google_secret_manager_secret.secrets["webhook-label-token"].secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.process_cf.email}"
+}
+
 # Read the ntfy access token from Secret Manager
 resource "google_secret_manager_secret_iam_member" "process_cf_ntfy_token" {
   secret_id = data.google_secret_manager_secret.ntfy_token.secret_id
@@ -67,6 +74,20 @@ resource "google_service_account" "webhook_cf" {
 # Publish to inbox-messages topic
 resource "google_pubsub_topic_iam_member" "webhook_cf_publisher" {
   topic  = google_pubsub_topic.inbox_messages.name
+  role   = "roles/pubsub.publisher"
+  member = "serviceAccount:${google_service_account.webhook_cf.email}"
+}
+
+# Read the webhook label token (to validate /label requests)
+resource "google_secret_manager_secret_iam_member" "webhook_cf_label_token" {
+  secret_id = google_secret_manager_secret.secrets["webhook-label-token"].secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.webhook_cf.email}"
+}
+
+# Publish to inbox-labels topic (human feedback from ntfy action buttons)
+resource "google_pubsub_topic_iam_member" "webhook_cf_labels_publisher" {
+  topic  = google_pubsub_topic.inbox_labels.name
   role   = "roles/pubsub.publisher"
   member = "serviceAccount:${google_service_account.webhook_cf.email}"
 }

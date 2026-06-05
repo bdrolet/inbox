@@ -6,13 +6,14 @@ See [docs/inbox-architecture.md](docs/inbox-architecture.md) for the full design
 
 ## How it works
 
-New emails trigger a Microsoft Graph change notification → Cloud Function (webhook) → Pub/Sub → Cloud Function (processor). The processor normalizes the message, embeds it, retrieves similar past messages with human-confirmed labels, builds a prompt with that context, and calls Claude Sonnet to classify it. The result drives a folder move in Outlook and (for urgent messages) a push notification via ntfy.sh.
+New emails trigger a Microsoft Graph change notification → Cloud Function (webhook) → Pub/Sub → Cloud Function (processor). The processor normalizes the message, embeds it with bge-small, retrieves similar past messages with human-confirmed labels, builds a retrieval-augmented prompt, and calls Claude Sonnet to classify it. The result drives a folder move in Outlook, tags the email with Outlook color categories, and (for urgent messages) fires a push notification via self-hosted ntfy with action buttons. Tapping a button corrects the label and feeds it back into the vector store.
 
-**Categories**: `urgent` · `respond` · `review` · `reference` · `ignore`
+**Categories**: `urgent` · `respond` · `review` · `reference` · `ignore`  
+**Importance**: `P0` (critical) · `P1` · `P2` · `P3` (nice to have) — independent of category
 
 ## Current state
 
-Phase 1 complete: event-driven Cloud Function processor receiving live emails, writing to Cloud SQL. The existing Cloud Run Job (`scripts/analyze_emails.py`) runs daily as a fallback and is removed in Phase 5.
+Phases 1–4 complete and live. Ready for Phase 5 (bootstrap labels, decommission Cloud Run Job fallback).
 
 ## Project structure
 
@@ -144,3 +145,34 @@ docker push $IMAGE
 ## Architecture
 
 See [docs/inbox-architecture.md](docs/inbox-architecture.md).
+
+```mermaid
+flowchart TD
+    GS[Graph subscription\nnew email] -->|change notification| WH[inbox-webhook CF\nPOST /]
+    WH -->|publish| MT[inbox-messages\nPub/Sub topic]
+    MT -->|trigger| PC[inbox-process CF\nprocess]
+
+    PC --> FE[fetch + normalize\nGraph API]
+    FE --> EM[embed + store\nbge-small + pgvector]
+    EM --> RT[retrieve neighbors\npgvector ANN]
+    RT --> CL[classify\nClaude Sonnet]
+    CL --> DB[(Cloud SQL\nclassifications)]
+    DB --> DP[dispatch]
+
+    DP --> AT[apply_tags\nOutlook color categories]
+    DP -->|URGENT| UN[ntfy push\nnotification]
+    DP -->|RESPOND| RF[move → reply_required\nfolder]
+    DP -->|REVIEW| RVF[move → review\nfolder]
+    DP -->|REFERENCE\nIGNORE| AR[move → Archive\nfolder]
+
+    UN -->|action button tap| WH2[inbox-webhook CF\nPOST /label]
+    WH2 -->|publish| LT[inbox-labels\nPub/Sub topic]
+    LT -->|trigger| LC[inbox-label CF\nlabel]
+    LC --> VS[(vector store\ncurrent_label)]
+
+    style UN fill:#f96,color:#000
+    style WH2 fill:#f96,color:#000
+    style LT fill:#f96,color:#000
+    style LC fill:#f96,color:#000
+    style VS fill:#f96,color:#000
+```

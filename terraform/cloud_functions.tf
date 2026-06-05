@@ -48,6 +48,12 @@ resource "google_cloudfunctions2_function" "webhook" {
       GCP_PROJECT_ID       = var.project_id
       WEBHOOK_CLIENT_STATE = "inbox-webhook"
     }
+    secret_environment_variables {
+      key        = "WEBHOOK_LABEL_TOKEN"
+      project_id = var.project_id
+      secret     = google_secret_manager_secret.secrets["webhook-label-token"].secret_id
+      version    = "latest"
+    }
   }
 
   depends_on = [google_project_service.apis]
@@ -200,6 +206,7 @@ resource "google_cloudfunctions2_function" "process" {
       MSAL_SECRET_NAME           = "msal-token-cache"
       NTFY_BASE_URL              = "https://${var.ntfy_domain}"
       NTFY_TOPIC                 = var.ntfy_topic
+      WEBHOOK_URL                = google_cloudfunctions2_function.webhook.service_config[0].uri
     }
     secret_environment_variables {
       key        = "POSTGRES_PASSWORD"
@@ -237,12 +244,69 @@ resource "google_cloudfunctions2_function" "process" {
       secret     = data.google_secret_manager_secret.ntfy_token.secret_id
       version    = "latest"
     }
+    secret_environment_variables {
+      key        = "WEBHOOK_LABEL_TOKEN"
+      project_id = var.project_id
+      secret     = google_secret_manager_secret.secrets["webhook-label-token"].secret_id
+      version    = "latest"
+    }
   }
 
   event_trigger {
     trigger_region = var.region
     event_type     = "google.cloud.pubsub.topic.v1.messagePublished"
     pubsub_topic   = google_pubsub_topic.inbox_messages.id
+    retry_policy   = "RETRY_POLICY_RETRY"
+  }
+
+  depends_on = [
+    google_project_service.apis,
+    google_sql_database_instance.inbox,
+  ]
+}
+
+# ---------------------------------------------------------------------------
+# Label handler function — processes human feedback from ntfy action buttons
+# ---------------------------------------------------------------------------
+resource "google_cloudfunctions2_function" "label" {
+  name     = "inbox-label"
+  location = var.region
+
+  build_config {
+    runtime     = "python311"
+    entry_point = "label"
+    source {
+      storage_source {
+        bucket = google_storage_bucket.cf_source.name
+        object = google_storage_bucket_object.process_source.name
+      }
+    }
+  }
+
+  service_config {
+    service_account_email = google_service_account.process_cf.email
+    min_instance_count    = 0
+    max_instance_count    = 3
+    timeout_seconds       = 60
+    available_memory      = "512Mi"
+    environment_variables = {
+      GCP_PROJECT_ID            = var.project_id
+      CLOUD_SQL_CONNECTION_NAME = google_sql_database_instance.inbox.connection_name
+      POSTGRES_USER             = var.db_user
+      POSTGRES_DB               = "app"
+    }
+    secret_environment_variables {
+      key        = "POSTGRES_PASSWORD"
+      project_id = var.project_id
+      secret     = google_secret_manager_secret.secrets["inbox-db-password"].secret_id
+      version    = "latest"
+    }
+  }
+
+  event_trigger {
+    trigger_region = var.region
+    event_type     = "google.cloud.pubsub.topic.v1.messagePublished"
+    pubsub_topic   = google_pubsub_topic.inbox_labels.id
     retry_policy   = "RETRY_POLICY_RETRY"
   }
 

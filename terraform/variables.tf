@@ -104,3 +104,9 @@ variable "ntfy_topic" {
   type        = string
   default     = ""
 }
+
+variable "webhook_label_token" {
+  description = "Bearer token required on /label requests from ntfy action buttons. Generate with: openssl rand -hex 32"
+  type        = string
+  sensitive   = true
+}
