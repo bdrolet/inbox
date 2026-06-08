@@ -10,6 +10,7 @@ locals {
     "webhook-label-token"   = var.webhook_label_token
     "grafana-otlp-endpoint" = var.grafana_otlp_endpoint
     "grafana-otlp-token"    = var.grafana_otlp_token
+    "asana-api-key"         = var.asana_api_key
   }
 }
 

@@ -76,3 +76,17 @@ def classify(system_prompt: str, user_message: str) -> Classification:
         reasoning=data.get("reasoning", ""),
         importance=importance,
     )
+
+
+def extract(prompt: str) -> str:
+    """Single-turn extraction call. Temperature 0, max_tokens 20. Returns raw stripped text."""
+    response = _get_client().messages.create(
+        model="claude-sonnet-4-6",
+        max_tokens=20,
+        temperature=0,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    usage = response.usage
+    otel.claude_tokens.add(usage.input_tokens, {"token_type": "input"})
+    otel.claude_tokens.add(usage.output_tokens, {"token_type": "output"})
+    return response.content[0].text.strip()

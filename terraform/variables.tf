@@ -124,3 +124,16 @@ variable "grafana_otlp_token" {
   sensitive   = true
   default     = ""
 }
+
+variable "asana_api_key" {
+  description = "Asana Personal Access Token — used by inbox-process CF to create review tasks"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "asana_project_id" {
+  description = "Asana project GID for inbox review tasks (from https://app.asana.com/0/{gid}/list)"
+  type        = string
+  default     = ""
+}

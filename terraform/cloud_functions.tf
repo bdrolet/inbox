@@ -220,6 +220,7 @@ resource "google_cloudfunctions2_function" "process" {
       NTFY_BASE_URL              = "https://${var.ntfy_domain}"
       NTFY_TOPIC                 = var.ntfy_topic
       WEBHOOK_URL                = google_cloudfunctions2_function.webhook.service_config[0].uri
+      ASANA_PROJECT_ID           = var.asana_project_id
       OTEL_BSP_MAX_QUEUE_SIZE    = "16384"
       OTEL_BSP_SCHEDULE_DELAY    = "2000"
       OTEL_BSP_EXPORT_TIMEOUT    = "30000"
@@ -276,6 +277,12 @@ resource "google_cloudfunctions2_function" "process" {
       key        = "GRAFANA_OTLP_TOKEN"
       project_id = var.project_id
       secret     = google_secret_manager_secret.secrets["grafana-otlp-token"].secret_id
+      version    = "latest"
+    }
+    secret_environment_variables {
+      key        = "ASANA_API_KEY"
+      project_id = var.project_id
+      secret     = google_secret_manager_secret.secrets["asana-api-key"].secret_id
       version    = "latest"
     }
   }
