@@ -13,8 +13,6 @@ import msal
 from dotenv import load_dotenv
 from clients.azure.email import Email
 
-# Set up logging
-logging.basicConfig(level=logging.WARNING)
 logger = logging.getLogger(__name__)
 
 # Load environment variables

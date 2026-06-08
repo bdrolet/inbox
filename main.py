@@ -23,6 +23,8 @@ import base64
 import json
 import logging
 
+logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
+
 import functions_framework
 from cloudevents.http import CloudEvent
 from opentelemetry.propagate import extract
