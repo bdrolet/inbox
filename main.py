@@ -54,6 +54,10 @@ def process(cloud_event: CloudEvent) -> None:
     notification = json.loads(data)
     attrs = cloud_event.data["message"].get("attributes", {})
     ctx = extract(attrs)
+    # Flush before processing to export a cumulative baseline. Without this,
+    # cold-start invocations produce a single OTLP data point (counter=1) and
+    # Prometheus increase() requires ≥2 samples to show a non-zero result.
+    otel.flush()
     try:
         run_pipeline(notification, _get_model(), context=ctx)
     finally:
