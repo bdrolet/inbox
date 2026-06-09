@@ -437,6 +437,31 @@ class GraphEmailClient:
             logger.error("Failed to tag message %s: %s %s", message_id, e, detail)
             return False
 
+    def create_reply_draft(self, external_id: str, body_text: str) -> str | None:
+        """Create a pre-addressed Outlook draft reply; return its webLink or None on failure."""
+        try:
+            resp = requests.post(
+                f"{self.graph_endpoint}/me/messages/{external_id}/createReply",
+                headers=self.get_headers(),
+            )
+            resp.raise_for_status()
+            draft = resp.json()
+            draft_id = draft["id"]
+            web_link = draft.get("webLink")
+
+            requests.patch(
+                f"{self.graph_endpoint}/me/messages/{draft_id}",
+                headers=self.get_headers(),
+                json={"body": {"contentType": "Text", "content": body_text}},
+            ).raise_for_status()
+
+            logger.info("Created reply draft %s for message %s", draft_id, external_id)
+            return web_link
+        except requests.exceptions.RequestException as e:
+            detail = e.response.text[:500] if e.response is not None else ""
+            logger.error("create_reply_draft failed for %s: %s %s", external_id, e, detail)
+            return None
+
     def move_message_to_action_folder(self, message_id: str, folder_display_name: str) -> bool:
         """
         Move a message to the folder named folder_display_name (e.g. reply_required).

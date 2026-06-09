@@ -63,3 +63,9 @@ CREATE TABLE IF NOT EXISTS tags (
     description TEXT,
     created_at  TIMESTAMPTZ DEFAULT now()
 );
+
+CREATE TABLE IF NOT EXISTS asana_tag_cache (
+    tag_name   TEXT PRIMARY KEY,
+    tag_gid    TEXT NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT now()
+);

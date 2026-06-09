@@ -4,6 +4,7 @@ import clients.asana as asana
 from models.message import Message
 from models.types import Classification, Importance
 from services import archiving
+from services import asana_tag_cache as tag_cache_svc
 from services import deadline as deadline_svc
 
 logger = logging.getLogger(__name__)
@@ -11,6 +12,11 @@ logger = logging.getLogger(__name__)
 
 def handle(result: Classification, msg: Message) -> None:
     archiving.move_to_folder(msg, "review")
+    try:
+        tag_gids = tag_cache_svc.resolve_gids(result.tags)
+    except Exception:
+        logger.exception("Tag GID resolution failed for message_id=%s", msg["id"])
+        tag_gids = []
     try:
         due_date = None
         if result.importance in (Importance.P0, Importance.P1):
@@ -27,6 +33,7 @@ def handle(result: Classification, msg: Message) -> None:
             body=msg["body"] or "",
             web_link=msg.get("web_link"),
             due_date=due_date,
+            tag_gids=tag_gids,
         )
         logger.info("Asana task created: gid=%s due=%s for message_id=%s", task_gid, due_date, msg["id"])
     except Exception:
