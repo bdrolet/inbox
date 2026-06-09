@@ -445,15 +445,22 @@ class GraphEmailClient:
                 headers=self.get_headers(),
             )
             resp.raise_for_status()
-            draft = resp.json()
-            draft_id = draft["id"]
-            web_link = draft.get("webLink")
+            draft_id = resp.json()["id"]
 
             requests.patch(
                 f"{self.graph_endpoint}/me/messages/{draft_id}",
                 headers=self.get_headers(),
                 json={"body": {"contentType": "Text", "content": body_text}},
             ).raise_for_status()
+
+            # Fetch webLink explicitly — createReply response may return wrong folder context
+            get_resp = requests.get(
+                f"{self.graph_endpoint}/me/messages/{draft_id}",
+                headers=self.get_headers(),
+                params={"$select": "webLink"},
+            )
+            get_resp.raise_for_status()
+            web_link = get_resp.json().get("webLink")
 
             logger.info("Created reply draft %s for message %s", draft_id, external_id)
             return web_link
