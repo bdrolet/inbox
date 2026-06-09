@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 
 _meter_provider: MeterProvider | None = None
 _tracer_provider: TracerProvider | None = None
+_metric_reader: PeriodicExportingMetricReader | None = None
 
 # Metric instruments — no-ops until setup_telemetry() runs
 emails_processed: metrics.Counter = metrics.NoOpMeter("noop").create_counter("noop")
@@ -35,7 +36,7 @@ def setup_telemetry(service_name: str) -> None:
     Initialize OTel MeterProvider, TracerProvider, and LoggerProvider targeting
     Grafana Cloud OTLP. No-ops when GRAFANA_OTLP_ENDPOINT is unset (local dev).
     """
-    global _meter_provider, _tracer_provider
+    global _meter_provider, _tracer_provider, _metric_reader
     global emails_processed, emails_duplicates, pipeline_errors, claude_tokens
     global human_feedback, confidence_hist, stage_duration, neighbors_hist
 
@@ -55,11 +56,11 @@ def setup_telemetry(service_name: str) -> None:
     trace.set_tracer_provider(_tracer_provider)
 
     # --- Metrics ---
-    reader = PeriodicExportingMetricReader(
+    _metric_reader = PeriodicExportingMetricReader(
         OTLPMetricExporter(endpoint=f"{endpoint}/v1/metrics", headers=headers),
         export_interval_millis=60_000,
     )
-    _meter_provider = MeterProvider(resource=resource, metric_readers=[reader])
+    _meter_provider = MeterProvider(resource=resource, metric_readers=[_metric_reader])
     metrics.set_meter_provider(_meter_provider)
 
     meter = _meter_provider.get_meter(service_name)
@@ -88,8 +89,8 @@ def get_tracer() -> trace.Tracer:
 
 
 def flush() -> None:
-    """Force-flush all providers. Call at end of every Cloud Function invocation."""
+    """Force-flush all providers. Call before and after every Cloud Function invocation."""
     if _tracer_provider is not None:
-        _tracer_provider.force_flush(timeout_millis=30_000)
-    if _meter_provider is not None:
-        _meter_provider.force_flush(timeout_millis=30_000)
+        _tracer_provider.force_flush(timeout_millis=5_000)
+    if _metric_reader is not None:
+        _metric_reader.force_flush(timeout_millis=5_000)
