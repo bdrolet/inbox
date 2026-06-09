@@ -13,8 +13,6 @@ import msal
 from dotenv import load_dotenv
 from clients.azure.email import Email
 
-# Set up logging
-logging.basicConfig(level=logging.WARNING)
 logger = logging.getLogger(__name__)
 
 # Load environment variables
@@ -325,7 +323,7 @@ class GraphEmailClient:
             
             # Get full email details including body
             params = {
-                '$select': 'id,subject,from,toRecipients,ccRecipients,bccRecipients,receivedDateTime,sentDateTime,body,bodyPreview,isRead,hasAttachments,attachments'
+                '$select': 'id,subject,from,toRecipients,ccRecipients,bccRecipients,receivedDateTime,sentDateTime,body,bodyPreview,isRead,hasAttachments,attachments,webLink'
             }
             
             response = requests.get(endpoint, headers=self.get_headers(), params=params)

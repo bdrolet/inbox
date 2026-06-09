@@ -13,3 +13,4 @@ class Message(TypedDict):
     received_at: datetime
     thread_id: Optional[str]
     raw: dict                   # original provider payload
+    web_link: Optional[str]     # Outlook web URL (from Graph webLink property)

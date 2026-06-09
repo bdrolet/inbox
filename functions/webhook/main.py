@@ -5,6 +5,7 @@ Handles three interactions:
   GET  ?validationToken=...  — subscription validation handshake (must reply in 10s)
   POST /                     — change notification; publishes each created message to Pub/Sub
   POST /label                — human feedback from ntfy action buttons; publishes to inbox-labels
+  GET  /label?...&token=...  — human feedback from Asana action links (browser click); same effect
 
 Deploy with:
   gcloud functions deploy inbox-webhook \
@@ -85,13 +86,14 @@ def webhook(request):
     publisher, messages_topic, labels_topic = _publisher_client()
 
     try:
-        # Human feedback from ntfy action buttons
+        # Human feedback from ntfy action buttons or Asana task action links
         if request.path == "/label":
             expected = os.environ.get("WEBHOOK_LABEL_TOKEN")
             if expected:
-                auth = request.headers.get("Authorization", "")
-                if auth != f"Bearer {expected}":
-                    logger.warning("Rejected /label request — invalid Authorization header")
+                auth  = request.headers.get("Authorization", "")
+                token = request.args.get("token", "")
+                if auth != f"Bearer {expected}" and token != expected:
+                    logger.warning("Rejected /label request — invalid auth")
                     return "", 403
             message_id = request.args.get("id")
             label      = request.args.get("label")
@@ -109,6 +111,8 @@ def webhook(request):
                     json.dumps({"message_id": message_id, "label": label, "source": source}).encode(),
                     **carrier,
                 )
+            if request.method == "GET":
+                return f"Label '{label}' applied.", 200, {"Content-Type": "text/plain"}
             return "", 202
 
         # Graph change notifications
