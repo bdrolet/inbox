@@ -96,7 +96,7 @@ def create_task(
     action_items = (
         f'<li><a href="{esc(action_url(confirm_label, "human_confirmation"))}">{confirm_text}</a></li>'
         f'<li><a href="{esc(action_url(alt_label, "human_correction"))}">{alt_text}</a></li>'
-        f'<li><a href="{esc(action_url("reference", "human_correction"))}">Archive</a></li>'
+        f'<li><a href="{esc(action_url("reference", "human_correction"))}">Reference</a></li>'
         f'<li><a href="{esc(action_url("ignore", "human_correction"))}">Ignore</a></li>'
     )
 
