@@ -11,7 +11,8 @@ logger = logging.getLogger(__name__)
 
 
 def handle(result: Classification, msg: Message) -> None:
-    archiving.move_to_folder(msg, "review")
+    moved = archiving.move_to_folder(msg, "review")
+    web_link = (moved or {}).get("webLink") or msg.get("web_link")
     try:
         tag_gids = tag_cache_svc.resolve_gids(result.tags)
     except Exception:
@@ -31,7 +32,7 @@ def handle(result: Classification, msg: Message) -> None:
             tags=result.tags,
             reasoning=result.reasoning,
             body=msg["body"] or "",
-            web_link=msg.get("web_link"),
+            web_link=web_link,
             due_date=due_date,
             tag_gids=tag_gids,
         )

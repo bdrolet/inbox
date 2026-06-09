@@ -469,9 +469,10 @@ class GraphEmailClient:
             logger.error("create_reply_draft failed for %s: %s %s", external_id, e, detail)
             return None
 
-    def move_message_to_action_folder(self, message_id: str, folder_display_name: str) -> bool:
+    def move_message_to_action_folder(self, message_id: str, folder_display_name: str) -> dict | None:
         """
         Move a message to the folder named folder_display_name (e.g. reply_required).
+        Returns the moved message object (webLink reflects new folder) or None on failure.
         Requires Mail.ReadWrite (or equivalent) on the token.
         """
         try:
@@ -484,7 +485,7 @@ class GraphEmailClient:
             )
             response.raise_for_status()
             logger.info("Moved message %s to folder %s", message_id, folder_display_name)
-            return True
+            return response.json()
         except Exception as e:
             detail = ""
             if isinstance(e, requests.exceptions.RequestException) and e.response is not None:
@@ -496,4 +497,4 @@ class GraphEmailClient:
                 e,
                 detail,
             )
-            return False
+            return None
