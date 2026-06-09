@@ -139,5 +139,14 @@ def create_task(
         json={"data": payload},
         timeout=10,
     )
+    if resp.status_code == 400:
+        errors = resp.json().get("errors", [])
+        if any("already assigned" in e.get("message", "") for e in errors):
+            import logging
+            logging.getLogger(__name__).warning(
+                "Asana task for message_id=%s already exists (duplicate external.gid) — skipping",
+                message_id,
+            )
+            return None
     resp.raise_for_status()
     return resp.json()["data"]["gid"]
