@@ -18,19 +18,15 @@ def create_task(
     tags: list[str],
     reasoning: str,
     body: str,
-    external_id: str,
+    web_link: str | None,
     due_date: str | None,
 ) -> str | None:
     """Create an Asana task and return its GID. Returns None if Asana is not configured."""
     if not ASANA_API_KEY or not ASANA_PROJECT_ID:
         return None
 
-    webhook_url  = os.environ.get("WEBHOOK_URL", "")
-    label_token  = os.environ.get("WEBHOOK_LABEL_TOKEN", "")
-    outlook_url  = (
-        "https://outlook.office.com/mail/inbox/id/"
-        + urllib.parse.quote(external_id, safe="")
-    )
+    webhook_url = os.environ.get("WEBHOOK_URL", "")
+    label_token = os.environ.get("WEBHOOK_LABEL_TOKEN", "")
 
     def action_url(label: str, source: str) -> str:
         params = f"id={message_id}&label={label}&source={source}"
@@ -38,26 +34,36 @@ def create_task(
             params += f"&token={urllib.parse.quote(label_token, safe='')}"
         return f"{webhook_url}/label?{params}"
 
-    notes = (
-        f"From: {sender_display} ({sender})\n"
-        f"Received: {received_at}\n"
-        f"Importance: {importance}\n"
-        f"Tags: {', '.join(tags) or 'none'}\n"
-        f"\nAI reasoning: {reasoning}\n"
-        f"\n{'─' * 35}\n"
-        f"{body[:500]}{'...' if len(body) > 500 else ''}\n"
-        f"\nOpen in Outlook → {outlook_url}\n"
-        f"\n{'─' * 35}\n"
-        f"Actions:\n"
-        f"✓ Confirmed review  → {action_url('review', 'human_confirmation')}\n"
-        f"↩ Respond instead   → {action_url('respond', 'human_correction')}\n"
-        f"📁 Archive           → {action_url('reference', 'human_correction')}\n"
-        f"🗑 Ignore            → {action_url('ignore', 'human_correction')}\n"
+    def esc(text: str) -> str:
+        return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+    body_preview = esc(body[:500]) + ("..." if len(body) > 500 else "")
+    outlook_link = f'<a href="{esc(web_link)}">Open in Outlook</a>\n' if web_link else ""
+
+    html_notes = (
+        "<body>"
+        "<ul>"
+        f"<li><strong>From:</strong> {esc(sender_display)} ({esc(sender)})</li>"
+        f"<li><strong>Received:</strong> {esc(received_at)}</li>"
+        f"<li><strong>Importance:</strong> {esc(importance)}</li>"
+        f"<li><strong>Tags:</strong> {esc(', '.join(tags) or 'none')}</li>"
+        "</ul>"
+        f"<strong>AI reasoning:</strong> {esc(reasoning)}\n"
+        f"\n{body_preview}\n"
+        f"\n{outlook_link}"
+        "\n<strong>Actions</strong>"
+        "<ul>"
+        f'<li><a href="{esc(action_url("review", "human_confirmation"))}">Confirmed review</a></li>'
+        f'<li><a href="{esc(action_url("respond", "human_correction"))}">Respond instead</a></li>'
+        f'<li><a href="{esc(action_url("reference", "human_correction"))}">Archive</a></li>'
+        f'<li><a href="{esc(action_url("ignore", "human_correction"))}">Ignore</a></li>'
+        "</ul>"
+        "</body>"
     )
 
     payload: dict = {
         "name": f"[{importance}] {subject or '(no subject)'}",
-        "notes": notes,
+        "html_notes": html_notes,
         "projects": [ASANA_PROJECT_ID],
         "external": {"gid": message_id, "data": "inbox"},
     }

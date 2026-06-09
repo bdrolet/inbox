@@ -27,4 +27,5 @@ def normalize(email: Email, raw: dict = None) -> Message:
         received_at=received_at,
         thread_id=None,
         raw=raw or {},
+        web_link=getattr(email, "web_link", None),
     )

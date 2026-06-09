@@ -323,7 +323,7 @@ class GraphEmailClient:
             
             # Get full email details including body
             params = {
-                '$select': 'id,subject,from,toRecipients,ccRecipients,bccRecipients,receivedDateTime,sentDateTime,body,bodyPreview,isRead,hasAttachments,attachments'
+                '$select': 'id,subject,from,toRecipients,ccRecipients,bccRecipients,receivedDateTime,sentDateTime,body,bodyPreview,isRead,hasAttachments,attachments,webLink'
             }
             
             response = requests.get(endpoint, headers=self.get_headers(), params=params)

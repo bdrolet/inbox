@@ -25,7 +25,7 @@ def handle(result: Classification, msg: Message) -> None:
             tags=result.tags,
             reasoning=result.reasoning,
             body=msg["body"] or "",
-            external_id=msg["external_id"],
+            web_link=msg.get("web_link"),
             due_date=due_date,
         )
         logger.info("Asana task created: gid=%s due=%s for message_id=%s", task_gid, due_date, msg["id"])

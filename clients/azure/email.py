@@ -23,6 +23,7 @@ class Email:
         self.is_read = data.get("isRead", False)
         self.has_attachments = data.get("hasAttachments", False)
         self.attachments = data.get("attachments", [])
+        self.web_link = data.get("webLink")
 
         if self.received_datetime:
             try:
