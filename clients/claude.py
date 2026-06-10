@@ -107,3 +107,17 @@ def draft(prompt: str) -> str:
     otel.claude_tokens.add(usage.input_tokens, {"token_type": "input"})
     otel.claude_tokens.add(usage.output_tokens, {"token_type": "output"})
     return response.content[0].text.strip()  # type: ignore[union-attr]
+
+
+def summarize(prompt: str) -> str:
+    """Extract structured summary. Haiku, temperature 0, max_tokens 400. Returns raw text."""
+    response = _get_client().messages.create(
+        model="claude-haiku-4-5-20251001",
+        max_tokens=400,
+        temperature=0,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    usage = response.usage
+    otel.claude_tokens.add(usage.input_tokens, {"token_type": "input"})
+    otel.claude_tokens.add(usage.output_tokens, {"token_type": "output"})
+    return response.content[0].text.strip()  # type: ignore[union-attr]

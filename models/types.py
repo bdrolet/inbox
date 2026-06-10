@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 
 
@@ -25,3 +25,9 @@ class Classification:
     tags: list[str]
     reasoning: str
     importance: Importance = Importance.P2
+
+
+@dataclass
+class EmailSummary:
+    key_points: list[str] = field(default_factory=list)
+    relevant_links: list[tuple[str, str]] = field(default_factory=list)  # (url, label)

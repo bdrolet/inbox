@@ -3,6 +3,8 @@ import urllib.parse
 
 import httpx
 
+from models.types import EmailSummary
+
 ASANA_API_KEY = os.environ.get("ASANA_API_KEY", "")
 ASANA_PROJECT_ID = os.environ.get("ASANA_PROJECT_ID", "")
 _BASE = "https://app.asana.com/api/1.0"
@@ -66,6 +68,7 @@ def create_task(
     category: str = "review",
     draft_link: str | None = None,
     tag_gids: list[str] | None = None,
+    summary: EmailSummary | None = None,
 ) -> str | None:
     """Create an Asana task and return its GID. Returns None if Asana is not configured."""
     if not ASANA_API_KEY or not ASANA_PROJECT_ID:
@@ -83,7 +86,6 @@ def create_task(
     def esc(text: str) -> str:
         return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
-    body_preview = esc(body[:500]) + ("..." if len(body) > 500 else "")
     outlook_link = f'<a href="{esc(web_link)}">Open in Outlook</a>\n' if web_link else ""
 
     if category == "respond":
@@ -106,6 +108,28 @@ def create_task(
         else ""
     )
 
+    if summary and summary.key_points:
+        key_points_html = (
+            "<strong>Key points:</strong><ul>"
+            + "".join(f"<li>{esc(p)}</li>" for p in summary.key_points)
+            + "</ul>"
+        )
+    else:
+        body_preview = esc(body[:500]) + ("..." if len(body) > 500 else "")
+        key_points_html = f"<strong>Preview:</strong>\n{body_preview}\n"
+
+    if summary and summary.relevant_links:
+        links_html = (
+            "<strong>Links:</strong><ul>"
+            + "".join(
+                f'<li><a href="{esc(url)}">{esc(label)}</a></li>'
+                for url, label in summary.relevant_links
+            )
+            + "</ul>"
+        )
+    else:
+        links_html = ""
+
     html_notes = (
         "<body>"
         "<ul>"
@@ -116,7 +140,8 @@ def create_task(
         f"{draft_item}"
         "</ul>"
         f"<strong>AI reasoning:</strong> {esc(reasoning)}\n"
-        f"\n{body_preview}\n"
+        f"\n{key_points_html}"
+        f"\n{links_html}"
         f"\n{outlook_link}"
         "\n<strong>Actions</strong>"
         f"<ul>{action_items}</ul>"
