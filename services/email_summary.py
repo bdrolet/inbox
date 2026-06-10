@@ -10,7 +10,8 @@ from models.types import EmailSummary
 logger = logging.getLogger(__name__)
 
 _NOISE = re.compile(
-    r"unsubscribe|tracking|pixel|open.?in.?browser|view.?online|manage.?preferences",
+    r"unsubscribe|tracking|pixel|open.?in.?browser|view.?online|manage.?preferences"
+    r"|groups\.google\.com.*msgid|utm_",
     re.IGNORECASE,
 )
 _GENERIC_LABELS = {"click here", "here", "link", "this link", "more", "read more"}
@@ -79,6 +80,7 @@ def generate(msg: Message, html_body: str | None = None) -> EmailSummary:
     key_points: list[str] = []
     try:
         raw = claude.summarize(prompt)
+        raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw.strip())
         data = json.loads(raw)
         key_points = data.get("key_points", [])
     except Exception:
