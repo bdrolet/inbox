@@ -11,6 +11,7 @@ locals {
     "grafana-otlp-endpoint" = var.grafana_otlp_endpoint
     "grafana-otlp-token"    = var.grafana_otlp_token
     "asana-api-key"         = var.asana_api_key
+    "hubspot-token"         = var.hubspot_token
   }
 
   # msal-token-cache is managed separately so CI can't overwrite the live token
