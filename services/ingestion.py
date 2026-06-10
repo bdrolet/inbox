@@ -24,6 +24,7 @@ def normalize(email: Email, raw: dict | None = None) -> Message:
         sender_display=email.from_name or "",
         subject=email.subject or "",
         body=email.get_body_text(),
+        body_html=email.body_content if email.body_type == "html" else None,
         received_at=received_at,
         thread_id=None,
         raw=raw or {},

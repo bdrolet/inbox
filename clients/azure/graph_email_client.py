@@ -308,6 +308,43 @@ class GraphEmailClient:
                 print(f"Response: {e.response.text}")
             return all_emails
 
+    def get_all_emails_since(self, since_datetime: datetime, page_size: int = 100) -> List[Email]:
+        """
+        Retrieve all emails across all folders received since a given datetime.
+
+        Uses /me/messages (not a specific folder) so a single paginated call
+        covers inbox, sent items, archive, and custom folders.
+        """
+        if not self.access_token:
+            raise ValueError("Not authenticated. Call authenticate() first.")
+
+        all_emails = []
+        since_str = since_datetime.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+        endpoint = f"{self.graph_endpoint}/me/messages"
+        params: Optional[Dict[str, str]] = {
+            "$filter": f"receivedDateTime ge {since_str}",
+            "$orderby": "receivedDateTime desc",
+            "$top": str(page_size),
+            "$select": "id,subject,from,toRecipients,ccRecipients,receivedDateTime,bodyPreview",
+        }
+
+        try:
+            while endpoint:
+                response = requests.get(endpoint, headers=self.get_headers(), params=params)
+                response.raise_for_status()
+                data = response.json()
+                all_emails.extend(Email(e) for e in data.get("value", []))
+                logger.info(f"Fetched {len(all_emails)} emails since {since_str}...")
+                endpoint = data.get("@odata.nextLink")
+                params = None
+            logger.info(f"Finished fetching {len(all_emails)} total emails since {since_str}")
+            return all_emails
+        except requests.exceptions.RequestException as e:
+            print(f"Error retrieving emails: {str(e)}")
+            if hasattr(e, "response") and e.response is not None:
+                print(f"Response: {e.response.text}")
+            return all_emails
+
     def get_email_details(self, email_id: str) -> Optional[Email]:
         """
         Get detailed information about a specific email

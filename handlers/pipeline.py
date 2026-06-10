@@ -128,6 +128,21 @@ def run(notification: dict, model, context=None) -> None:
                 dispatch(result, msg)
             otel.stage_duration.record((time.monotonic() - t0) * 1000, {"stage": "dispatch"})
 
+            try:
+                import clients.hubspot as hubspot
+                contact_id = hubspot.upsert_contact(msg["sender"], msg["sender_display"])
+                if contact_id:
+                    hubspot.log_email(
+                        contact_id,
+                        msg["subject"],
+                        msg["sender"],
+                        msg["body"],
+                        msg["received_at"],
+                        body_html=msg.get("body_html"),
+                    )
+            except Exception:
+                logger.warning("HubSpot logging failed", exc_info=True)
+
             total_ms = (time.monotonic() - pipeline_start) * 1000
             otel.stage_duration.record(total_ms, {"stage": "total"})
             otel.emails_processed.add(

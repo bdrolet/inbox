@@ -10,6 +10,7 @@ class Message(TypedDict):
     sender_display: str  # human-readable name
     subject: str  # "" if absent (never None)
     body: str  # plain text
+    body_html: Optional[str]  # raw HTML body when content type is html, else None
     received_at: datetime
     thread_id: Optional[str]
     raw: dict  # original provider payload
