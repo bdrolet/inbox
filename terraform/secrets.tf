@@ -12,6 +12,9 @@ locals {
     "grafana-otlp-token"    = var.grafana_otlp_token
     "asana-api-key"         = var.asana_api_key
   }
+
+  # msal-token-cache is managed separately so CI can't overwrite the live token
+  secrets_without_msal = { for k, v in local.secrets : k => v if k != "msal-token-cache" }
 }
 
 resource "google_secret_manager_secret" "secrets" {
@@ -26,9 +29,26 @@ resource "google_secret_manager_secret" "secrets" {
 }
 
 resource "google_secret_manager_secret_version" "secrets" {
-  for_each    = local.secrets
+  for_each    = local.secrets_without_msal
   secret      = google_secret_manager_secret.secrets[each.key].id
   secret_data = each.value
+}
+
+# Separate resource so lifecycle.ignore_changes prevents CI from overwriting the live MSAL token.
+# The Cloud Function refreshes this secret autonomously; CI's copy is intentionally ignored after
+# the initial seed.
+resource "google_secret_manager_secret_version" "msal_token_cache" {
+  secret      = google_secret_manager_secret.secrets["msal-token-cache"].id
+  secret_data = var.msal_token_cache
+
+  lifecycle {
+    ignore_changes = [secret_data]
+  }
+}
+
+moved {
+  from = google_secret_manager_secret_version.secrets["msal-token-cache"]
+  to   = google_secret_manager_secret_version.msal_token_cache
 }
 
 # ntfy-token and ntfy-password were created outside Terraform — reference as data sources

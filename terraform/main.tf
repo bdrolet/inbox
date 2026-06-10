@@ -7,6 +7,11 @@ terraform {
       version = "~> 5.0"
     }
   }
+
+  backend "gcs" {
+    bucket = "bens-project-462804-tf-state"
+    prefix = "inbox"
+  }
 }
 
 provider "google" {
