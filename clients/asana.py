@@ -121,7 +121,10 @@ def create_task(
     if summary and summary.relevant_links:
         links_html = (
             "<strong>Links:</strong><ul>"
-            + "".join(f'<li><a href="{esc(url)}">{esc(label)}</a></li>' for url, label in summary.relevant_links)
+            + "".join(
+                f'<li><a href="{esc(url)}">{esc(label)}</a></li>'
+                for url, label in summary.relevant_links
+            )
             + "</ul>"
         )
     else:
