@@ -130,6 +130,7 @@ def run(notification: dict, model, context=None) -> None:
 
             try:
                 import clients.hubspot as hubspot
+
                 contact_id = hubspot.upsert_contact(msg["sender"], msg["sender_display"])
                 if contact_id:
                     hubspot.log_email(

@@ -19,7 +19,6 @@ import argparse
 import os
 import re
 import sys
-from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -55,7 +54,7 @@ def main():
     from clients.azure.graph_email_client import GraphEmailClient
     import clients.hubspot as hubspot
 
-    print(f"Authenticating with Microsoft Graph...")
+    print("Authenticating with Microsoft Graph...")
     client = GraphEmailClient()
     client.authenticate_interactive()
 
@@ -91,7 +90,7 @@ def main():
 
     print(f"Found {len(contacts)} unique contacts after filtering.")
 
-    created = updated = skipped = 0
+    updated = skipped = 0
     for i, (address, (display, last_seen)) in enumerate(
         sorted(contacts.items(), key=lambda x: x[0]), start=1
     ):
