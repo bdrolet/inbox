@@ -86,14 +86,11 @@ def build_prompt(
             importance = ex.get("current_importance")
             label_str = f"{label}, {importance}" if importance else label
             parts.append(
-                f"  [{label_str}] From: {ex['sender']} | Subject: {ex['subject']}\n"
-                f"  {snippet}"
+                f"  [{label_str}] From: {ex['sender']} | Subject: {ex['subject']}\n  {snippet}"
             )
         if aggregates:
             summary = ", ".join(f"{k}: {v}" for k, v in sorted(aggregates.items()))
-            parts.append(
-                f"Label distribution ({sum(aggregates.values())} neighbors): {summary}"
-            )
+            parts.append(f"Label distribution ({sum(aggregates.values())} neighbors): {summary}")
 
     # Current message
     parts.append("")

@@ -3,14 +3,15 @@ Microsoft Graph API Email Client
 Handles authentication and email retrieval from Outlook/Office 365
 """
 
-import os
-import json
-import requests
 import logging
-from typing import List, Dict, Optional
-from datetime import datetime, timedelta
+import os
+from datetime import datetime
+from typing import Dict, List, Optional
+
 import msal
+import requests
 from dotenv import load_dotenv
+
 from clients.azure.email import Email
 
 logger = logging.getLogger(__name__)
@@ -18,36 +19,37 @@ logger = logging.getLogger(__name__)
 # Load environment variables
 load_dotenv()
 
+
 class GraphEmailClient:
     def __init__(self):
-        self.client_id = os.getenv('CLIENT_ID')
-        self.client_secret = os.getenv('CLIENT_SECRET')
-        self.tenant_id = os.getenv('TENANT_ID')
-        self.redirect_uri = os.getenv('REDIRECT_URI', 'http://localhost:8080/callback')
-        self.scopes = os.getenv('SCOPES', 'https://graph.microsoft.com/Mail.Read https://graph.microsoft.com/User.Read').split()
-        
+        self.client_id = os.getenv("CLIENT_ID")
+        self.client_secret = os.getenv("CLIENT_SECRET")
+        self.tenant_id = os.getenv("TENANT_ID")
+        self.redirect_uri = os.getenv("REDIRECT_URI", "http://localhost:8080/callback")
+        self.scopes = os.getenv(
+            "SCOPES", "https://graph.microsoft.com/Mail.Read https://graph.microsoft.com/User.Read"
+        ).split()
+
         # Validate configuration
         if not all([self.client_id, self.client_secret, self.tenant_id]):
             raise ValueError("Missing required environment variables. Please check your .env file.")
-        
+
         self.authority = f"https://login.microsoftonline.com/{self.tenant_id}"
         self.graph_endpoint = "https://graph.microsoft.com/v1.0"
         self.access_token = None
         self.token_cache_file = os.path.expanduser("~/.inbox-token-cache.json")
         # displayName -> folder id (action folders: reply_required, no_action, etc.)
         self._mail_folder_id_cache: Dict[str, str] = {}
-        
+
         # Initialize MSAL app for public client (interactive auth) with token cache
         self.app = msal.PublicClientApplication(
-            self.client_id,
-            authority=self.authority,
-            token_cache=msal.SerializableTokenCache()
+            self.client_id, authority=self.authority, token_cache=msal.SerializableTokenCache()
         )
-        
+
         # Load existing token cache if it exists
         if os.path.exists(self.token_cache_file):
-            self.app.token_cache.deserialize(open(self.token_cache_file, 'r').read())
-    
+            self.app.token_cache.deserialize(open(self.token_cache_file, "r").read())
+
     def authenticate(self) -> bool:
         """
         Authenticate using client credentials flow (for app-only access)
@@ -55,33 +57,35 @@ class GraphEmailClient:
         """
         try:
             result = self.app.acquire_token_silent(self.scopes, account=None)
-            
+
             if not result:
-                result = self.app.acquire_token_for_client(scopes=["https://graph.microsoft.com/.default"])
-            
+                result = self.app.acquire_token_for_client(
+                    scopes=["https://graph.microsoft.com/.default"]
+                )
+
             if "access_token" in result:
                 self.access_token = result["access_token"]
                 return True
             else:
                 print(f"Authentication failed: {result.get('error_description', 'Unknown error')}")
                 return False
-                
+
         except Exception as e:
             print(f"Authentication error: {str(e)}")
             return False
-    
+
     def save_token_cache(self):
         """Save the token cache to disk"""
         if self.app.token_cache.has_state_changed:
-            with open(self.token_cache_file, 'w') as cache_file:
+            with open(self.token_cache_file, "w") as cache_file:
                 cache_file.write(self.app.token_cache.serialize())
 
     def _load_cache_from_secret_manager(self) -> str:
         """Load MSAL token cache from GCP Secret Manager."""
         from google.cloud import secretmanager
 
-        project_id = os.getenv('GCP_PROJECT_ID')
-        secret_name = os.getenv('MSAL_SECRET_NAME', 'msal-token-cache')
+        project_id = os.getenv("GCP_PROJECT_ID")
+        secret_name = os.getenv("MSAL_SECRET_NAME", "msal-token-cache")
         client = secretmanager.SecretManagerServiceClient()
         name = f"projects/{project_id}/secrets/{secret_name}/versions/latest"
         response = client.access_secret_version(request={"name": name})
@@ -94,8 +98,8 @@ class GraphEmailClient:
 
         from google.cloud import secretmanager
 
-        project_id = os.getenv('GCP_PROJECT_ID')
-        secret_name = os.getenv('MSAL_SECRET_NAME', 'msal-token-cache')
+        project_id = os.getenv("GCP_PROJECT_ID")
+        secret_name = os.getenv("MSAL_SECRET_NAME", "msal-token-cache")
         client = secretmanager.SecretManagerServiceClient()
         parent = f"projects/{project_id}/secrets/{secret_name}"
         payload = self.app.token_cache.serialize().encode("UTF-8")
@@ -138,138 +142,137 @@ class GraphEmailClient:
         try:
             # Try to get token silently first
             accounts = self.app.get_accounts()
-            
+
             if accounts:
                 result = self.app.acquire_token_silent(self.scopes, account=accounts[0])
                 if result and "access_token" in result:
                     self.access_token = result["access_token"]
                     self.save_token_cache()
                     return True
-            
+
             # If silent auth fails, do device code auth
             flow = self.app.initiate_device_flow(scopes=self.scopes)
-            
+
             if "user_code" not in flow:
                 print("Failed to create device flow")
                 return False
-            
-            print(f"\nTo sign in, use a web browser to open the page:")
+
+            print("\nTo sign in, use a web browser to open the page:")
             print(f"  {flow['verification_uri']}")
             print(f"and enter the code: {flow['user_code']}")
             print("\nWaiting for authentication...")
-            
+
             result = self.app.acquire_token_by_device_flow(flow)
-            
+
             if "access_token" in result:
                 self.access_token = result["access_token"]
                 self.save_token_cache()
                 print("✓ Authentication successful!")
                 return True
             else:
-                print(f"Device flow authentication failed: {result.get('error_description', 'Unknown error')}")
+                print(
+                    f"Device flow authentication failed: {result.get('error_description', 'Unknown error')}"
+                )
                 return False
-                
+
         except Exception as e:
             print(f"Device flow authentication error: {str(e)}")
             return False
-    
+
     def get_headers(self) -> Dict[str, str]:
         """Get headers for Graph API requests"""
         if not self.access_token:
             raise ValueError("Not authenticated. Call authenticate() first.")
-        
-        return {
-            'Authorization': f'Bearer {self.access_token}',
-            'Content-Type': 'application/json'
-        }
-    
-    def get_emails_since(self, since_datetime: datetime, folder: str = 'inbox') -> List[Email]:
+
+        return {"Authorization": f"Bearer {self.access_token}", "Content-Type": "application/json"}
+
+    def get_emails_since(self, since_datetime: datetime, folder: str = "inbox") -> List[Email]:
         """
         Retrieve emails received since a specific datetime
-        
+
         Args:
             since_datetime: Datetime object - emails received after this time
             folder: Email folder to read from (default: 'inbox')
-        
+
         Returns:
             List of Email objects
         """
         if not self.access_token:
             raise ValueError("Not authenticated. Call authenticate() first.")
-        
+
         try:
             # Construct the API endpoint
             endpoint = f"{self.graph_endpoint}/me/mailFolders/{folder}/messages"
-            
+
             # Format datetime for Graph API (ISO 8601 format)
-            since_str = since_datetime.strftime('%Y-%m-%dT%H:%M:%S.%fZ')
-            
+            since_str = since_datetime.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+
             # Query parameters
             params = {
-                '$filter': f"receivedDateTime ge {since_str}",
-                '$orderby': 'receivedDateTime desc',
-                '$select': 'id,subject,from,receivedDateTime,bodyPreview,isRead,hasAttachments'
+                "$filter": f"receivedDateTime ge {since_str}",
+                "$orderby": "receivedDateTime desc",
+                "$select": "id,subject,from,receivedDateTime,bodyPreview,isRead,hasAttachments",
             }
-            
+
             response = requests.get(endpoint, headers=self.get_headers(), params=params)
             response.raise_for_status()
-            
+
             data = response.json()
-            emails_data = data.get('value', [])
+            emails_data = data.get("value", [])
             return [Email(email_data) for email_data in emails_data]
-            
+
         except requests.exceptions.RequestException as e:
             print(f"Error retrieving emails: {str(e)}")
-            if hasattr(e, 'response') and e.response is not None:
+            if hasattr(e, "response") and e.response is not None:
                 print(f"Response: {e.response.text}")
             return []
-    
-    def get_latest_emails(self, count: int = 10, folder: str = 'inbox') -> List[Email]:
+
+    def get_latest_emails(self, count: int = 10, folder: str = "inbox") -> List[Email]:
         """
         Retrieve the latest emails from specified folder
-        
+
         Args:
             count: Number of emails to retrieve (default: 10)
             folder: Email folder to read from (default: 'inbox')
-        
+
         Returns:
             List of Email objects
         """
         if not self.access_token:
             raise ValueError("Not authenticated. Call authenticate() first.")
-        
+
         try:
             # Construct the API endpoint
             endpoint = f"{self.graph_endpoint}/me/mailFolders/{folder}/messages"
-            
+
             # Query parameters
             params = {
-                '$top': count,
-                '$orderby': 'receivedDateTime desc',
-                '$select': 'id,subject,from,receivedDateTime,bodyPreview,isRead,hasAttachments'
+                "$top": count,
+                "$orderby": "receivedDateTime desc",
+                "$select": "id,subject,from,receivedDateTime,bodyPreview,isRead,hasAttachments",
             }
-            
+
             response = requests.get(endpoint, headers=self.get_headers(), params=params)
             response.raise_for_status()
-            
+
             data = response.json()
-            emails_data = data.get('value', [])
+            emails_data = data.get("value", [])
             return [Email(email_data) for email_data in emails_data]
-            
+
         except requests.exceptions.RequestException as e:
             print(f"Error retrieving emails: {str(e)}")
-            if hasattr(e, 'response') and e.response is not None:
+            if hasattr(e, "response") and e.response is not None:
                 print(f"Response: {e.response.text}")
             return []
-    
-    def get_all_emails(self, folder: str = 'inbox', page_size: int = 100) -> List[Email]:
+
+    def get_all_emails(self, folder: str = "inbox", page_size: int = 100) -> List[Email]:
         """
         Retrieve all emails from a folder, following pagination links.
-        
+
         Args:
             folder: Email folder to read from (default: 'inbox')
             page_size: Number of emails per API request (default: 100)
-        
+
         Returns:
             List of Email objects
         """
@@ -279,9 +282,9 @@ class GraphEmailClient:
         all_emails = []
         endpoint = f"{self.graph_endpoint}/me/mailFolders/{folder}/messages"
         params = {
-            '$top': page_size,
-            '$orderby': 'receivedDateTime desc',
-            '$select': 'id,subject,from,receivedDateTime,bodyPreview,isRead,hasAttachments'
+            "$top": page_size,
+            "$orderby": "receivedDateTime desc",
+            "$select": "id,subject,from,receivedDateTime,bodyPreview,isRead,hasAttachments",
         }
 
         try:
@@ -290,10 +293,10 @@ class GraphEmailClient:
                 response.raise_for_status()
                 data = response.json()
 
-                all_emails.extend(Email(e) for e in data.get('value', []))
+                all_emails.extend(Email(e) for e in data.get("value", []))
                 logger.info(f"Fetched {len(all_emails)} emails so far...")
 
-                endpoint = data.get('@odata.nextLink')
+                endpoint = data.get("@odata.nextLink")
                 params = None  # nextLink already includes query params
 
             logger.info(f"Finished fetching {len(all_emails)} total emails from {folder}")
@@ -301,67 +304,64 @@ class GraphEmailClient:
 
         except requests.exceptions.RequestException as e:
             print(f"Error retrieving emails: {str(e)}")
-            if hasattr(e, 'response') and e.response is not None:
+            if hasattr(e, "response") and e.response is not None:
                 print(f"Response: {e.response.text}")
             return all_emails
 
     def get_email_details(self, email_id: str) -> Optional[Email]:
         """
         Get detailed information about a specific email
-        
+
         Args:
             email_id: The ID of the email to retrieve
-        
+
         Returns:
             Email object or None if not found
         """
         if not self.access_token:
             raise ValueError("Not authenticated. Call authenticate() first.")
-        
+
         try:
             endpoint = f"{self.graph_endpoint}/me/messages/{email_id}"
-            
+
             # Get full email details including body
             params = {
-                '$select': 'id,subject,from,toRecipients,ccRecipients,bccRecipients,receivedDateTime,sentDateTime,body,bodyPreview,isRead,hasAttachments,attachments,webLink'
+                "$select": "id,subject,from,toRecipients,ccRecipients,bccRecipients,receivedDateTime,sentDateTime,body,bodyPreview,isRead,hasAttachments,attachments,webLink"
             }
-            
+
             response = requests.get(endpoint, headers=self.get_headers(), params=params)
             response.raise_for_status()
-            
+
             email_data = response.json()
             return Email(email_data)
-            
+
         except requests.exceptions.RequestException as e:
             print(f"Error retrieving email details: {str(e)}")
             return None
-    
-    
+
     def mark_as_read(self, email_id: str) -> bool:
         """
         Mark an email as read
-        
+
         Args:
             email_id: The ID of the email to mark as read
-        
+
         Returns:
             True if successful, False otherwise
         """
         if not self.access_token:
             raise ValueError("Not authenticated. Call authenticate() first.")
-        
+
         try:
             endpoint = f"{self.graph_endpoint}/me/messages/{email_id}"
-            
-            data = {
-                "isRead": True
-            }
-            
+
+            data = {"isRead": True}
+
             response = requests.patch(endpoint, headers=self.get_headers(), json=data)
             response.raise_for_status()
-            
+
             return True
-            
+
         except requests.exceptions.RequestException as e:
             print(f"Error marking email as read: {str(e)}")
             return False
@@ -469,7 +469,9 @@ class GraphEmailClient:
             logger.error("create_reply_draft failed for %s: %s %s", external_id, e, detail)
             return None
 
-    def move_message_to_action_folder(self, message_id: str, folder_display_name: str) -> dict | None:
+    def move_message_to_action_folder(
+        self, message_id: str, folder_display_name: str
+    ) -> dict | None:
         """
         Move a message to the folder named folder_display_name (e.g. reply_required).
         Returns the moved message object (webLink reflects new folder) or None on failure.

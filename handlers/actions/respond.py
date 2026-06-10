@@ -5,8 +5,8 @@ from clients.graph import get_graph_client
 from models.message import Message
 from models.types import Classification
 from services import archiving
-from services import draft_reply as draft_svc
 from services import asana_tag_cache as tag_cache_svc
+from services import draft_reply as draft_svc
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +40,9 @@ def handle(result: Classification, msg: Message) -> None:
         )
         logger.info(
             "Respond task created: gid=%s draft=%s for message_id=%s",
-            task_gid, draft_link, msg["id"],
+            task_gid,
+            draft_link,
+            msg["id"],
         )
     except Exception:
         logger.exception("Respond task/draft creation failed for message_id=%s", msg["id"])

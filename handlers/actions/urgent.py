@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 
 def handle(result: Classification, msg: Message) -> None:
     ntfy.notify(
-        message_id=msg["id"],
+        message_id=msg["id"] or "",
         subject=msg["subject"],
         sender=msg["sender"],
         reasoning=result.reasoning,

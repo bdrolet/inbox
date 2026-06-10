@@ -36,6 +36,8 @@ def handle(result: Classification, msg: Message) -> None:
             due_date=due_date,
             tag_gids=tag_gids,
         )
-        logger.info("Asana task created: gid=%s due=%s for message_id=%s", task_gid, due_date, msg["id"])
+        logger.info(
+            "Asana task created: gid=%s due=%s for message_id=%s", task_gid, due_date, msg["id"]
+        )
     except Exception:
         logger.exception("Asana task creation failed for message_id=%s", msg["id"])

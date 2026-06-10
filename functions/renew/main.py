@@ -10,10 +10,11 @@ Required env vars:
                           (set this after running clients/graph_subscriptions.py register)
   MSAL_SECRET_NAME      — optional; defaults to msal-token-cache
 """
+
 import json
 import logging
 import os
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 
 import functions_framework
 import msal
@@ -36,16 +37,16 @@ def _save_msal_token(serialized: str) -> None:
     secret_name = os.environ.get("MSAL_SECRET_NAME", "msal-token-cache")
     client = secretmanager.SecretManagerServiceClient()
     parent = f"projects/{project_id}/secrets/{secret_name}"
-    client.add_secret_version(
-        request={"parent": parent, "payload": {"data": serialized.encode()}}
-    )
+    client.add_secret_version(request={"parent": parent, "payload": {"data": serialized.encode()}})
 
 
 def _get_access_token() -> str:
     authority = f"https://login.microsoftonline.com/{os.environ['TENANT_ID']}"
-    scopes = ["https://graph.microsoft.com/Mail.Read",
-              "https://graph.microsoft.com/Mail.ReadWrite",
-              "https://graph.microsoft.com/User.Read"]
+    scopes = [
+        "https://graph.microsoft.com/Mail.Read",
+        "https://graph.microsoft.com/Mail.ReadWrite",
+        "https://graph.microsoft.com/User.Read",
+    ]
 
     cache = msal.SerializableTokenCache()
     cache.deserialize(_load_msal_token())
@@ -77,9 +78,7 @@ def renew(request):
         logger.error("GRAPH_SUBSCRIPTION_ID not set")
         return "GRAPH_SUBSCRIPTION_ID not set", 500
 
-    expiry = (datetime.now(timezone.utc) + timedelta(days=3)).strftime(
-        "%Y-%m-%dT%H:%M:%S.0000000Z"
-    )
+    expiry = (datetime.now(timezone.utc) + timedelta(days=3)).strftime("%Y-%m-%dT%H:%M:%S.0000000Z")
     logger.info("Renewing subscription %s until %s", subscription_id, expiry)
 
     token = _get_access_token()

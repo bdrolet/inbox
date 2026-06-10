@@ -3,9 +3,9 @@ import urllib.parse
 
 import httpx
 
-ASANA_API_KEY    = os.environ.get("ASANA_API_KEY", "")
+ASANA_API_KEY = os.environ.get("ASANA_API_KEY", "")
 ASANA_PROJECT_ID = os.environ.get("ASANA_PROJECT_ID", "")
-_BASE            = "https://app.asana.com/api/1.0"
+_BASE = "https://app.asana.com/api/1.0"
 
 _workspace_gid: str | None = None
 
@@ -88,10 +88,10 @@ def create_task(
 
     if category == "respond":
         confirm_label, confirm_text = "respond", "Confirmed respond"
-        alt_label,     alt_text     = "review",  "Review instead"
+        alt_label, alt_text = "review", "Review instead"
     else:
-        confirm_label, confirm_text = "review",  "Confirmed review"
-        alt_label,     alt_text     = "respond", "Respond instead"
+        confirm_label, confirm_text = "review", "Confirmed review"
+        alt_label, alt_text = "respond", "Respond instead"
 
     action_items = (
         f'<li><a href="{esc(action_url(confirm_label, "human_confirmation"))}">{confirm_text}</a></li>'
@@ -102,7 +102,8 @@ def create_task(
 
     draft_item = (
         f'<li><a href="{esc(draft_link)}">Open draft reply in Outlook</a></li>'
-        if draft_link else ""
+        if draft_link
+        else ""
     )
 
     html_notes = (
@@ -143,6 +144,7 @@ def create_task(
         errors = resp.json().get("errors", [])
         if any("already assigned" in e.get("message", "") for e in errors):
             import logging
+
             logging.getLogger(__name__).warning(
                 "Asana task for message_id=%s already exists (duplicate external.gid) — skipping",
                 message_id,

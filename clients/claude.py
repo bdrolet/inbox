@@ -42,14 +42,17 @@ def classify(system_prompt: str, user_message: str) -> Classification:
     cache_read = getattr(usage, "cache_read_input_tokens", 0) or 0
     logger.debug(
         "Claude usage — in: %d, out: %d, cache_create: %d, cache_read: %d",
-        usage.input_tokens, usage.output_tokens, cache_creation, cache_read,
+        usage.input_tokens,
+        usage.output_tokens,
+        cache_creation,
+        cache_read,
     )
     otel.claude_tokens.add(usage.input_tokens, {"token_type": "input"})
     otel.claude_tokens.add(usage.output_tokens, {"token_type": "output"})
     otel.claude_tokens.add(cache_read, {"token_type": "cache_read"})
     otel.claude_tokens.add(cache_creation, {"token_type": "cache_creation"})
 
-    text = response.content[0].text.strip()
+    text = response.content[0].text.strip()  # type: ignore[union-attr]
 
     try:
         data = json.loads(text)
@@ -89,7 +92,7 @@ def extract(prompt: str) -> str:
     usage = response.usage
     otel.claude_tokens.add(usage.input_tokens, {"token_type": "input"})
     otel.claude_tokens.add(usage.output_tokens, {"token_type": "output"})
-    return response.content[0].text.strip()
+    return response.content[0].text.strip()  # type: ignore[union-attr]
 
 
 def draft(prompt: str) -> str:
@@ -103,4 +106,4 @@ def draft(prompt: str) -> str:
     usage = response.usage
     otel.claude_tokens.add(usage.input_tokens, {"token_type": "input"})
     otel.claude_tokens.add(usage.output_tokens, {"token_type": "output"})
-    return response.content[0].text.strip()
+    return response.content[0].text.strip()  # type: ignore[union-attr]

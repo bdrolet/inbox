@@ -1,8 +1,8 @@
 import logging
 
-from services import archiving
 from models.message import Message
 from models.types import Classification
+from services import archiving
 
 logger = logging.getLogger(__name__)
 
