@@ -437,9 +437,42 @@ class GraphEmailClient:
             logger.error("Failed to tag message %s: %s %s", message_id, e, detail)
             return False
 
-    def move_message_to_action_folder(self, message_id: str, folder_display_name: str) -> bool:
+    def create_reply_draft(self, external_id: str, body_text: str) -> str | None:
+        """Create a pre-addressed Outlook draft reply; return its webLink or None on failure."""
+        try:
+            resp = requests.post(
+                f"{self.graph_endpoint}/me/messages/{external_id}/createReply",
+                headers=self.get_headers(),
+            )
+            resp.raise_for_status()
+            draft_id = resp.json()["id"]
+
+            requests.patch(
+                f"{self.graph_endpoint}/me/messages/{draft_id}",
+                headers=self.get_headers(),
+                json={"body": {"contentType": "Text", "content": body_text}},
+            ).raise_for_status()
+
+            # Fetch webLink explicitly — createReply response may return wrong folder context
+            get_resp = requests.get(
+                f"{self.graph_endpoint}/me/messages/{draft_id}",
+                headers=self.get_headers(),
+                params={"$select": "webLink"},
+            )
+            get_resp.raise_for_status()
+            web_link = get_resp.json().get("webLink")
+
+            logger.info("Created reply draft %s for message %s", draft_id, external_id)
+            return web_link
+        except requests.exceptions.RequestException as e:
+            detail = e.response.text[:500] if e.response is not None else ""
+            logger.error("create_reply_draft failed for %s: %s %s", external_id, e, detail)
+            return None
+
+    def move_message_to_action_folder(self, message_id: str, folder_display_name: str) -> dict | None:
         """
         Move a message to the folder named folder_display_name (e.g. reply_required).
+        Returns the moved message object (webLink reflects new folder) or None on failure.
         Requires Mail.ReadWrite (or equivalent) on the token.
         """
         try:
@@ -452,7 +485,7 @@ class GraphEmailClient:
             )
             response.raise_for_status()
             logger.info("Moved message %s to folder %s", message_id, folder_display_name)
-            return True
+            return response.json()
         except Exception as e:
             detail = ""
             if isinstance(e, requests.exceptions.RequestException) and e.response is not None:
@@ -464,4 +497,4 @@ class GraphEmailClient:
                 e,
                 detail,
             )
-            return False
+            return None
