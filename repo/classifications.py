@@ -8,7 +8,7 @@ def insert(
     conn: psycopg.Connection,
     message_id: str,
     category: str,
-    source: str,           # 'llm' | 'human_correction' | 'human_confirmation'
+    source: str,  # 'llm' | 'human_correction' | 'human_confirmation'
     confidence: Optional[float] = None,
     alternatives: Optional[dict] = None,
     tags: Optional[list] = None,

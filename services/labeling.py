@@ -24,7 +24,10 @@ def apply_label(
     """
     logger.info(
         "Applying label %r (importance=%s) to %s (source=%s)",
-        label, importance, message_id, source,
+        label,
+        importance,
+        message_id,
+        source,
     )
     with get_conn() as conn:
         classifications.insert(conn, message_id=message_id, category=label, source=source)

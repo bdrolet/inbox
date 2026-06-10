@@ -6,6 +6,7 @@ One-shot schema migration. Run as a Kubernetes Job after Phase 1 infra is up.
     --env="POSTGRES_USER=..." --env="POSTGRES_PASSWORD=..." \
     -- python scripts/migrate_db.py
 """
+
 import sys
 from pathlib import Path
 

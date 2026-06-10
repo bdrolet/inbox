@@ -15,8 +15,9 @@ Usage (run once after the webhook Cloud Function is deployed):
 Graph subscriptions expire after ~3 days. The renewal Cloud Function
 (functions/renew/main.py) handles automatic renewal via Cloud Scheduler.
 """
+
 import os
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 
 import requests
 

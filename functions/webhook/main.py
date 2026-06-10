@@ -14,6 +14,7 @@ Deploy with:
     --trigger-http --allow-unauthenticated \
     --set-env-vars GCP_PROJECT_ID=bens-project-462804,WEBHOOK_CLIENT_STATE=inbox-webhook
 """
+
 import json
 import logging
 import os
@@ -68,7 +69,7 @@ def _publisher_client() -> tuple[pubsub_v1.PublisherClient, str, str]:
         _publisher = pubsub_v1.PublisherClient()
         project = os.environ["GCP_PROJECT_ID"]
         _messages_topic = _publisher.topic_path(project, "inbox-messages")
-        _labels_topic   = _publisher.topic_path(project, "inbox-labels")
+        _labels_topic = _publisher.topic_path(project, "inbox-labels")
     return _publisher, _messages_topic, _labels_topic
 
 
@@ -90,14 +91,14 @@ def webhook(request):
         if request.path == "/label":
             expected = os.environ.get("WEBHOOK_LABEL_TOKEN")
             if expected:
-                auth  = request.headers.get("Authorization", "")
+                auth = request.headers.get("Authorization", "")
                 token = request.args.get("token", "")
                 if auth != f"Bearer {expected}" and token != expected:
                     logger.warning("Rejected /label request — invalid auth")
                     return "", 403
             message_id = request.args.get("id")
-            label      = request.args.get("label")
-            source     = request.args.get("source", "human_correction")
+            label = request.args.get("label")
+            source = request.args.get("source", "human_correction")
             logger.info("Label callback: id=%s label=%s source=%s", message_id, label, source)
 
             with _get_tracer().start_as_current_span("inbox.webhook.label") as span:
@@ -108,7 +109,9 @@ def webhook(request):
                 inject(carrier)
                 publisher.publish(
                     labels_topic,
-                    json.dumps({"message_id": message_id, "label": label, "source": source}).encode(),
+                    json.dumps(
+                        {"message_id": message_id, "label": label, "source": source}
+                    ).encode(),
                     **carrier,
                 )
             if request.method == "GET":

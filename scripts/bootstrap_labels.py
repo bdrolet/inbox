@@ -30,6 +30,7 @@ import textwrap
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from dotenv import load_dotenv
+
 load_dotenv()
 
 from clients.db import get_conn
@@ -166,7 +167,9 @@ def fetch_likely(conn, category, limit=50):
 
 def prompt_label(msg, idx, total, counts):
     print("\n" + "─" * 80)
-    print(f"[{idx}/{total}]  {msg['received_at'].strftime('%Y-%m-%d %H:%M')}  |  {msg['sender_display'] or msg['sender']}")
+    print(
+        f"[{idx}/{total}]  {msg['received_at'].strftime('%Y-%m-%d %H:%M')}  |  {msg['sender_display'] or msg['sender']}"
+    )
     print(f"Subject: {msg['subject']}")
     print()
     body = (msg["body"] or "").strip()
@@ -179,10 +182,16 @@ def prompt_label(msg, idx, total, counts):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--likely", metavar="CATEGORY",
-                        help="Show unlabeled emails most similar to existing examples of CATEGORY")
-    parser.add_argument("--ai-filter", metavar="CATEGORY",
-                        help="Use Claude to pre-classify and show only emails predicted as CATEGORY")
+    parser.add_argument(
+        "--likely",
+        metavar="CATEGORY",
+        help="Show unlabeled emails most similar to existing examples of CATEGORY",
+    )
+    parser.add_argument(
+        "--ai-filter",
+        metavar="CATEGORY",
+        help="Use Claude to pre-classify and show only emails predicted as CATEGORY",
+    )
     args = parser.parse_args()
 
     for flag in [args.likely, args.ai_filter]:
@@ -205,7 +214,9 @@ def main():
         print("No unlabeled messages found.")
         return
 
-    print(f"\n{len(rows)} unlabeled messages{label_hint}. Target: 60–75 labeled (12–15 per category).")
+    print(
+        f"\n{len(rows)} unlabeled messages{label_hint}. Target: 60–75 labeled (12–15 per category)."
+    )
     counts = {c: 0 for c in SHORTCUTS.values()}
 
     for idx, msg in enumerate(rows, 1):

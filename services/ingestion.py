@@ -10,7 +10,7 @@ def fetch(message_id: str, client) -> Optional[Email]:
     return client.get_email_details(message_id)
 
 
-def normalize(email: Email, raw: dict = None) -> Message:
+def normalize(email: Email, raw: dict | None = None) -> Message:
     """Convert a Graph API Email object into the common Message shape."""
     received_at = email.received_datetime
     if not isinstance(received_at, datetime):
@@ -19,7 +19,7 @@ def normalize(email: Email, raw: dict = None) -> Message:
     return Message(
         id=None,
         source="email",
-        external_id=email.id,
+        external_id=email.id or "",
         sender=email.from_email or "",
         sender_display=email.from_name or "",
         subject=email.subject or "",

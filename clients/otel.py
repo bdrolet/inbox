@@ -64,14 +64,34 @@ def setup_telemetry(service_name: str) -> None:
     metrics.set_meter_provider(_meter_provider)
 
     meter = _meter_provider.get_meter(service_name)
-    emails_processed  = meter.create_counter("inbox.emails.processed",  description="Emails successfully processed")
-    emails_duplicates = meter.create_counter("inbox.emails.duplicates", description="Duplicate emails skipped")
-    pipeline_errors   = meter.create_counter("inbox.pipeline.errors",   description="Pipeline errors by stage")
-    claude_tokens     = meter.create_counter("inbox.claude.tokens",     description="Claude API tokens consumed")
-    human_feedback    = meter.create_counter("inbox.human.feedback",    description="Human label feedback events")
-    confidence_hist   = meter.create_histogram("inbox.classification.confidence", unit="{score}", description="Classification confidence score")
-    stage_duration    = meter.create_histogram("inbox.stage.duration",  unit="ms", description="Duration of each pipeline stage")
-    neighbors_hist    = meter.create_histogram("inbox.neighbors.count", unit="{count}", description="Labeled neighbors retrieved for classification")
+    emails_processed = meter.create_counter(
+        "inbox.emails.processed", description="Emails successfully processed"
+    )
+    emails_duplicates = meter.create_counter(
+        "inbox.emails.duplicates", description="Duplicate emails skipped"
+    )
+    pipeline_errors = meter.create_counter(
+        "inbox.pipeline.errors", description="Pipeline errors by stage"
+    )
+    claude_tokens = meter.create_counter(
+        "inbox.claude.tokens", description="Claude API tokens consumed"
+    )
+    human_feedback = meter.create_counter(
+        "inbox.human.feedback", description="Human label feedback events"
+    )
+    confidence_hist = meter.create_histogram(
+        "inbox.classification.confidence",
+        unit="{score}",
+        description="Classification confidence score",
+    )
+    stage_duration = meter.create_histogram(
+        "inbox.stage.duration", unit="ms", description="Duration of each pipeline stage"
+    )
+    neighbors_hist = meter.create_histogram(
+        "inbox.neighbors.count",
+        unit="{count}",
+        description="Labeled neighbors retrieved for classification",
+    )
 
     # --- Logs ---
     log_provider = LoggerProvider(resource=resource)

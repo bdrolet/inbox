@@ -18,11 +18,10 @@ load_dotenv()
 
 
 def main():
-    client_id = os.getenv('CLIENT_ID')
-    tenant_id = os.getenv('TENANT_ID')
+    client_id = os.getenv("CLIENT_ID")
+    tenant_id = os.getenv("TENANT_ID")
     scopes = os.getenv(
-        'SCOPES',
-        'https://graph.microsoft.com/Mail.Read https://graph.microsoft.com/User.Read'
+        "SCOPES", "https://graph.microsoft.com/Mail.Read https://graph.microsoft.com/User.Read"
     ).split()
 
     if not client_id or not tenant_id:
