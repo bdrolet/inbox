@@ -99,48 +99,41 @@ Runs in interactive mode: fetches the latest 10 emails, unread emails, and email
 
 ## Deployment
 
-Infrastructure is managed with Terraform. Secrets are stored in GCP Secret Manager and injected at runtime.
+Infrastructure is managed with Terraform. Terraform state is stored remotely in GCS (`bens-project-462804-tf-state`). Secrets are stored in GCP Secret Manager and injected at runtime.
 
-### First-time setup
+### Automatic deploys (CI/CD)
+
+Pushing to `main` triggers `.github/workflows/deploy.yml`, which runs `terraform apply` automatically. This covers any change to `main.py`, `clients/`, `models/`, `repo/`, `services/`, `handlers/`, `functions/`, `requirements.txt`, or `terraform/`. Changes to `docs/`, `scripts/`, or `.claude/` do not trigger a deploy.
+
+Typical deploy time: ~8–12 minutes (dominated by GCP Cloud Function build time).
+
+### Manual apply (local)
+
+Run locally when you need to apply before pushing, or for changes the CI path doesn't cover:
+
+```bash
+cd terraform
+terraform init   # connects to remote GCS state automatically
+terraform apply
+```
+
+### First-time setup (new machine)
 
 ```bash
 cd terraform
 cp terraform.tfvars.example terraform.tfvars
-# Fill in terraform.tfvars with real values (including db_password)
-terraform init
+# Fill in terraform.tfvars with real values
+terraform init   # pulls state from GCS
 terraform apply
 ```
 
-After apply, run the schema migration:
+After the very first apply (which creates Cloud SQL), run the schema migration:
 
 ```bash
 CLOUD_SQL_CONNECTION_NAME=bens-project-462804:us-central1:inbox \
   POSTGRES_USER=inbox POSTGRES_PASSWORD=<password> POSTGRES_DB=app \
   python scripts/migrate_db.py
 ```
-
-### Deploy a new Cloud Run Job image (legacy fallback)
-
-```bash
-IMAGE=$(terraform -chdir=terraform output -raw artifact_registry_url)/analyze-emails:latest
-docker build -f Dockerfile.analyze-emails -t $IMAGE .
-docker push $IMAGE
-```
-
-### Terraform variables
-
-| Variable | Description |
-|----------|-------------|
-| `project_id` | GCP project ID (set in `project.auto.tfvars`) |
-| `client_id` | Azure app registration client ID |
-| `client_secret` | Azure app registration client secret |
-| `tenant_id` | Azure tenant ID |
-| `openai_api_key` | OpenAI API key |
-| `msal_token_cache` | Serialized MSAL token cache JSON |
-| `db_user` | Cloud SQL username (default: `inbox`) |
-| `db_password` | Cloud SQL password |
-| `region` | GCP region (default: `us-central1`) |
-| `graph_subscription_id` | Graph change-notification subscription ID |
 
 ## Architecture
 

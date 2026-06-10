@@ -9,11 +9,10 @@ import os
 import sys
 from datetime import datetime, timedelta
 from services.email_processor import EmailProcessor
-from services.email_analyzer import ActionType
 
 
 def is_headless():
-    return bool(os.getenv('GCP_PROJECT_ID'))
+    return bool(os.getenv("GCP_PROJECT_ID"))
 
 
 def main():
@@ -22,7 +21,7 @@ def main():
     print("=" * 50)
     print(f"Mode: {'Cloud Run (headless)' if headless else 'Local (interactive)'}")
 
-    if not os.getenv('OPENAI_API_KEY'):
+    if not os.getenv("OPENAI_API_KEY"):
         print("Error: OPENAI_API_KEY environment variable not set")
         sys.exit(1) if headless else sys.exit(0)
 
@@ -39,7 +38,7 @@ def main():
             team_members=["colleague1@company.com", "colleague2@company.com"],
             current_projects=["Project Alpha", "Project Beta"],
             working_hours={"start": "09:00", "end": "17:00"},
-            timezone="America/New_York"
+            timezone="America/New_York",
         )
         processor.add_important_contact("ceo@company.com", "CEO")
         processor.add_important_contact("manager@company.com", "Manager")
@@ -82,6 +81,7 @@ def main():
     except Exception as e:
         print(f"Error: {e}")
         import traceback
+
         traceback.print_exc()
         if headless:
             sys.exit(1)

@@ -1,21 +1,22 @@
 """
 Full message processing pipeline: ingest → embed → classify → store → dispatch.
 """
+
 import logging
 import time
 
 from opentelemetry.trace import StatusCode
 
 import clients.otel as otel
-from clients.graph import get_graph_client
 from clients.claude import classify
 from clients.db import get_conn
+from clients.graph import get_graph_client
+from handlers.actions.dispatch import dispatch
 from repo import classifications, messages, senders
 from repo.embeddings import retrieve_neighbors
 from services.classification import PROMPT_VERSION, aggregate_neighbors, build_prompt
 from services.embedding import embed_and_store, text_for_embedding
 from services.ingestion import fetch, normalize
-from handlers.actions.dispatch import dispatch
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +56,9 @@ def run(notification: dict, model, context=None) -> None:
                     return
 
                 msg_id = messages.insert(conn, msg)
-                msg["id"] = msg_id  # make DB UUID available to action handlers (ntfy action buttons)
+                msg["id"] = (
+                    msg_id  # make DB UUID available to action handlers (ntfy action buttons)
+                )
                 senders.upsert(conn, msg["sender"], msg["source"])
                 sender_ctx = senders.get(conn, msg["sender"], msg["source"])
 
@@ -76,20 +79,26 @@ def run(notification: dict, model, context=None) -> None:
                     span.set_attribute("neighbor_count", len(neighbors))
                     labeled = [n for n in neighbors if n.get("current_label")]
                     span.set_attribute("labeled_count", len(labeled))
-                otel.stage_duration.record((time.monotonic() - t0) * 1000, {"stage": "retrieve_neighbors"})
+                otel.stage_duration.record(
+                    (time.monotonic() - t0) * 1000, {"stage": "retrieve_neighbors"}
+                )
 
                 aggregates = aggregate_neighbors(neighbors)
                 top_examples = neighbors[:3]
 
                 logger.debug(
                     "Classifying %s — %d labeled neighbors, aggregates: %s",
-                    msg_id, len(neighbors), aggregates,
+                    msg_id,
+                    len(neighbors),
+                    aggregates,
                 )
 
                 # Classify
                 t0 = time.monotonic()
                 with tracer.start_as_current_span("inbox.classify") as span:
-                    system_prompt, user_message = build_prompt(msg, aggregates, top_examples, sender_ctx)
+                    system_prompt, user_message = build_prompt(
+                        msg, aggregates, top_examples, sender_ctx
+                    )
                     result = classify(system_prompt, user_message)
                     span.set_attribute("category", result.category.value)
                     span.set_attribute("importance", result.importance.value)
@@ -121,14 +130,20 @@ def run(notification: dict, model, context=None) -> None:
 
             total_ms = (time.monotonic() - pipeline_start) * 1000
             otel.stage_duration.record(total_ms, {"stage": "total"})
-            otel.emails_processed.add(1, {"category": result.category.value, "importance": result.importance.value})
+            otel.emails_processed.add(
+                1, {"category": result.category.value, "importance": result.importance.value}
+            )
             otel.confidence_hist.record(result.confidence, {"category": result.category.value})
             otel.neighbors_hist.record(len(neighbors))
 
             logger.info(
                 "Processed %s — %r: %r → %s (%s, %.2f) | %d labeled neighbors",
-                msg_id, msg["sender"], msg["subject"],
-                result.category.value, result.importance.value, result.confidence,
+                msg_id,
+                msg["sender"],
+                msg["subject"],
+                result.category.value,
+                result.importance.value,
+                result.confidence,
                 len(neighbors),
             )
 

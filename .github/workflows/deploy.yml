@@ -1,0 +1,58 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'main.py'
+      - 'clients/**'
+      - 'models/**'
+      - 'repo/**'
+      - 'services/**'
+      - 'handlers/**'
+      - 'functions/**'
+      - 'requirements.txt'
+      - 'terraform/**'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_DEPLOYER_SA }}
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~1.5"
+
+      - name: Terraform init
+        working-directory: terraform
+        run: terraform init
+
+      - name: Terraform apply
+        working-directory: terraform
+        env:
+          TF_VAR_project_id: bens-project-462804
+          TF_VAR_client_id: ${{ secrets.TF_VAR_CLIENT_ID }}
+          TF_VAR_client_secret: ${{ secrets.TF_VAR_CLIENT_SECRET }}
+          TF_VAR_tenant_id: ${{ secrets.TF_VAR_TENANT_ID }}
+          TF_VAR_openai_api_key: ${{ secrets.TF_VAR_OPENAI_API_KEY }}
+          TF_VAR_anthropic_api_key: ${{ secrets.TF_VAR_ANTHROPIC_API_KEY }}
+          TF_VAR_msal_token_cache: ${{ secrets.TF_VAR_MSAL_TOKEN_CACHE }}
+          TF_VAR_db_password: ${{ secrets.TF_VAR_DB_PASSWORD }}
+          TF_VAR_graph_subscription_id: ${{ vars.GRAPH_SUBSCRIPTION_ID }}
+          TF_VAR_ntfy_topic: ${{ vars.NTFY_TOPIC }}
+          TF_VAR_webhook_label_token: ${{ secrets.TF_VAR_WEBHOOK_LABEL_TOKEN }}
+          TF_VAR_grafana_otlp_endpoint: ${{ secrets.TF_VAR_GRAFANA_OTLP_ENDPOINT }}
+          TF_VAR_grafana_otlp_token: ${{ secrets.TF_VAR_GRAFANA_OTLP_TOKEN }}
+          TF_VAR_asana_api_key: ${{ secrets.TF_VAR_ASANA_API_KEY }}
+          TF_VAR_asana_project_id: ${{ vars.ASANA_PROJECT_ID }}
+        run: terraform apply -auto-approve

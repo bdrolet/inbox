@@ -39,12 +39,23 @@ from services.ingestion import normalize
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--since", type=int, default=90, metavar="DAYS",
-                        help="Fetch emails received in the last N days (default: 90)")
-    parser.add_argument("--limit", type=int, default=None, metavar="N",
-                        help="Stop after processing N emails")
-    parser.add_argument("--folder", type=str, default="inbox", metavar="NAME",
-                        help="Outlook folder to pull from (default: inbox)")
+    parser.add_argument(
+        "--since",
+        type=int,
+        default=90,
+        metavar="DAYS",
+        help="Fetch emails received in the last N days (default: 90)",
+    )
+    parser.add_argument(
+        "--limit", type=int, default=None, metavar="N", help="Stop after processing N emails"
+    )
+    parser.add_argument(
+        "--folder",
+        type=str,
+        default="inbox",
+        metavar="NAME",
+        help="Outlook folder to pull from (default: inbox)",
+    )
     args = parser.parse_args()
 
     since_dt = datetime.now(timezone.utc) - timedelta(days=args.since)
@@ -68,11 +79,14 @@ def main():
         folder = folder_id
     # get_all_emails returns bodyPreview only — we fetch full details per email below
     all_emails = client.get_all_emails(folder=folder)
-    in_range = [e for e in all_emails if isinstance(e.received_datetime, datetime)
-                and e.received_datetime >= since_dt]
+    in_range = [
+        e
+        for e in all_emails
+        if isinstance(e.received_datetime, datetime) and e.received_datetime >= since_dt
+    ]
 
     if args.limit:
-        in_range = in_range[:args.limit]
+        in_range = in_range[: args.limit]
 
     logger.info("%d emails in range, %d to process", len(all_emails), len(in_range))
 
@@ -83,8 +97,9 @@ def main():
             # Fetch full body — the list endpoint only returns bodyPreview
             email = client.get_email_details(stub.id)
             if email is None:
-                logger.warning("[%d/%d] Could not fetch details for %s — skipping",
-                               i, len(in_range), stub.id)
+                logger.warning(
+                    "[%d/%d] Could not fetch details for %s — skipping", i, len(in_range), stub.id
+                )
                 errors += 1
                 continue
 
@@ -102,8 +117,13 @@ def main():
                 conn.commit()
 
             inserted += 1
-            logger.info("[%d/%d] ✓ %s — %s", i, len(in_range),
-                        email.received_datetime.strftime("%Y-%m-%d"), msg["subject"][:60])
+            logger.info(
+                "[%d/%d] ✓ %s — %s",
+                i,
+                len(in_range),
+                email.received_datetime.strftime("%Y-%m-%d"),
+                msg["subject"][:60],
+            )
 
         except Exception as e:
             logger.error("[%d/%d] Error processing %s: %s", i, len(in_range), stub.id, e)

@@ -1,5 +1,3 @@
-from typing import Optional
-
 import psycopg
 
 
@@ -50,9 +48,7 @@ def set_current_label(conn: psycopg.Connection, message_id: str, label: str) -> 
     )
 
 
-def set_current_importance(
-    conn: psycopg.Connection, message_id: str, importance: str
-) -> None:
+def set_current_importance(conn: psycopg.Connection, message_id: str, importance: str) -> None:
     conn.execute(
         """
         UPDATE message_embeddings

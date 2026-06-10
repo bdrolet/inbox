@@ -19,6 +19,7 @@ Required env vars for process:
 Heavy imports (PyTorch via clients.bge, handlers.pipeline) are deferred inside process()
 so the inbox-label CF cold-starts without loading the model (~518 MiB).
 """
+
 import base64
 import json
 import logging
@@ -43,6 +44,7 @@ def _get_model():
     global _model
     if _model is None:
         from clients.bge import load_model
+
         _model = load_model()
     return _model
 
@@ -50,6 +52,7 @@ def _get_model():
 @functions_framework.cloud_event
 def process(cloud_event: CloudEvent) -> None:
     from handlers.pipeline import run as run_pipeline
+
     data = base64.b64decode(cloud_event.data["message"]["data"]).decode()
     notification = json.loads(data)
     attrs = cloud_event.data["message"].get("attributes", {})
@@ -72,7 +75,9 @@ def label(cloud_event: CloudEvent) -> None:
     ctx = extract(attrs)
     logger.info(
         "Label feedback received: message_id=%s label=%s source=%s",
-        payload.get("message_id"), payload.get("label"), payload.get("source"),
+        payload.get("message_id"),
+        payload.get("label"),
+        payload.get("source"),
     )
     try:
         labeling.apply_label(

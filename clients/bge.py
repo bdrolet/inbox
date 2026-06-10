@@ -5,6 +5,7 @@ def load_model():
     # Deferred import — keeps module-level import of clients.bge fast so the
     # Cloud Run health check passes before PyTorch/sentence-transformers load.
     from sentence_transformers import SentenceTransformer
+
     return SentenceTransformer(_MODEL_NAME)
 
 
