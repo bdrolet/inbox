@@ -7,6 +7,7 @@ import time
 
 from opentelemetry.trace import StatusCode
 
+import clients.hubspot as hubspot
 import clients.otel as otel
 from clients.claude import classify
 from clients.db import get_conn
@@ -129,8 +130,6 @@ def run(notification: dict, model, context=None) -> None:
             otel.stage_duration.record((time.monotonic() - t0) * 1000, {"stage": "dispatch"})
 
             try:
-                import clients.hubspot as hubspot
-
                 contact_id = hubspot.upsert_contact(msg["sender"], msg["sender_display"])
                 if contact_id:
                     hubspot.log_email(

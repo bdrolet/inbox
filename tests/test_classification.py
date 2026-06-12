@@ -10,6 +10,7 @@ _BASE_MSG = {
     "sender_display": "Alice",
     "subject": "Quarterly report",
     "body": "Please review the attached quarterly report by Friday.",
+    "body_html": None,
     "received_at": datetime(2026, 6, 10, 14, 0),
     "thread_id": None,
     "raw": {},
