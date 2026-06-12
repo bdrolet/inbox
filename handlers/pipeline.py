@@ -3,6 +3,7 @@ Full message processing pipeline: ingest → embed → classify → store → di
 """
 
 import logging
+import os
 import time
 
 from opentelemetry.trace import StatusCode
@@ -15,6 +16,7 @@ from clients.graph import get_graph_client
 from handlers.actions.dispatch import dispatch
 from repo import classifications, messages, senders
 from repo.embeddings import retrieve_neighbors
+from services import asana_tag_cache as tag_cache_svc
 from services.classification import PROMPT_VERSION, aggregate_neighbors, build_prompt
 from services.embedding import embed_and_store, text_for_embedding
 from services.ingestion import fetch, normalize
@@ -46,6 +48,10 @@ def run(notification: dict, model, context=None) -> None:
 
             if email is None:
                 logger.warning(f"Could not fetch email {message_id} — skipping")
+                return
+
+            if os.environ.get("GCP_PROJECT_ID") and "[LOCAL-TEST]" in (email.subject or ""):
+                logger.info("Skipping local-test email %s in GCP", message_id)
                 return
 
             msg = normalize(email, raw=notification)
@@ -100,33 +106,38 @@ def run(notification: dict, model, context=None) -> None:
                     system_prompt, user_message = build_prompt(
                         msg, aggregates, top_examples, sender_ctx
                     )
-                    result = classify(system_prompt, user_message)
-                    span.set_attribute("category", result.category.value)
-                    span.set_attribute("importance", result.importance.value)
-                    span.set_attribute("confidence", result.confidence)
+                    classification = classify(system_prompt, user_message)
+                    span.set_attribute("category", classification.category.value)
+                    span.set_attribute("importance", classification.importance.value)
+                    span.set_attribute("confidence", classification.confidence)
                     span.set_attribute("model", _MODEL_NAME)
                 otel.stage_duration.record((time.monotonic() - t0) * 1000, {"stage": "classify"})
+
+                try:
+                    classification.tag_gids = tag_cache_svc.resolve_gids(classification.tags)
+                except Exception:
+                    logger.exception("Tag GID resolution failed for message_id=%s", msg_id)
 
                 classifications.insert(
                     conn,
                     message_id=msg_id,
-                    category=result.category.value,
+                    category=classification.category.value,
                     source="llm",
-                    confidence=result.confidence,
-                    alternatives=result.alternatives,
-                    tags=result.tags,
-                    reasoning=result.reasoning,
+                    confidence=classification.confidence,
+                    alternatives=classification.alternatives,
+                    tags=classification.tags,
+                    reasoning=classification.reasoning,
                     model=_MODEL_NAME,
                     prompt_version=PROMPT_VERSION,
-                    importance=result.importance.value,
+                    importance=classification.importance.value,
                 )
                 conn.commit()
 
             # Dispatch
             t0 = time.monotonic()
             with tracer.start_as_current_span("inbox.dispatch") as span:
-                span.set_attribute("category", result.category.value)
-                dispatch(result, msg)
+                span.set_attribute("category", classification.category.value)
+                dispatch(classification, msg)
             otel.stage_duration.record((time.monotonic() - t0) * 1000, {"stage": "dispatch"})
 
             try:
@@ -146,9 +157,9 @@ def run(notification: dict, model, context=None) -> None:
             total_ms = (time.monotonic() - pipeline_start) * 1000
             otel.stage_duration.record(total_ms, {"stage": "total"})
             otel.emails_processed.add(
-                1, {"category": result.category.value, "importance": result.importance.value}
+                1, {"category": classification.category.value, "importance": classification.importance.value}
             )
-            otel.confidence_hist.record(result.confidence, {"category": result.category.value})
+            otel.confidence_hist.record(classification.confidence, {"category": classification.category.value})
             otel.neighbors_hist.record(len(neighbors))
 
             logger.info(
@@ -156,9 +167,9 @@ def run(notification: dict, model, context=None) -> None:
                 msg_id,
                 msg["sender"],
                 msg["subject"],
-                result.category.value,
-                result.importance.value,
-                result.confidence,
+                classification.category.value,
+                classification.importance.value,
+                classification.confidence,
                 len(neighbors),
             )
 

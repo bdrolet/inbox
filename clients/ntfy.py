@@ -8,7 +8,14 @@ NTFY_TOKEN = os.environ.get("NTFY_TOKEN", "")
 WEBHOOK_LABEL_TOKEN = os.environ.get("WEBHOOK_LABEL_TOKEN", "")
 
 
-def notify(message_id: str, subject: str, sender: str, reasoning: str, importance: str) -> None:
+def notify(
+    message_id: str,
+    subject: str,
+    sender: str,
+    reasoning: str,
+    importance: str,
+    task_url: str | None = None,
+) -> None:
     if not NTFY_TOPIC:
         return
 
@@ -20,33 +27,36 @@ def notify(message_id: str, subject: str, sender: str, reasoning: str, importanc
     action_headers = (
         {"Authorization": f"Bearer {WEBHOOK_LABEL_TOKEN}"} if WEBHOOK_LABEL_TOKEN else {}
     )
+    payload: dict = {
+        "topic": NTFY_TOPIC,
+        "title": f"[{importance.upper()}] {subject}",
+        "message": f"From: {sender}\n\n{reasoning}",
+        "actions": [
+            {
+                "action": "http",
+                "label": "Confirm",
+                "url": f"{webhook_url}/label?id={message_id}&label=urgent&source=human_confirmation",
+                "headers": action_headers,
+            },
+            {
+                "action": "http",
+                "label": "Respond",
+                "url": f"{webhook_url}/label?id={message_id}&label=respond&source=human_correction",
+                "headers": action_headers,
+            },
+            {
+                "action": "http",
+                "label": "Review",
+                "url": f"{webhook_url}/label?id={message_id}&label=review&source=human_correction",
+                "headers": action_headers,
+            },
+        ],
+    }
+    if task_url:
+        payload["click"] = task_url
     httpx.post(
         f"{NTFY_BASE_URL}/",
         headers=headers,
-        json={
-            "topic": NTFY_TOPIC,
-            "title": f"[{importance.upper()}] {subject}",
-            "message": f"From: {sender}\n\n{reasoning}",
-            "actions": [
-                {
-                    "action": "http",
-                    "label": "Confirm",
-                    "url": f"{webhook_url}/label?id={message_id}&label=urgent&source=human_confirmation",
-                    "headers": action_headers,
-                },
-                {
-                    "action": "http",
-                    "label": "Respond",
-                    "url": f"{webhook_url}/label?id={message_id}&label=respond&source=human_correction",
-                    "headers": action_headers,
-                },
-                {
-                    "action": "http",
-                    "label": "Review",
-                    "url": f"{webhook_url}/label?id={message_id}&label=review&source=human_correction",
-                    "headers": action_headers,
-                },
-            ],
-        },
+        json=payload,
         timeout=10,
     )

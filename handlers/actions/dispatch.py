@@ -16,22 +16,22 @@ _HANDLERS = {
 }
 
 
-def dispatch(result: Classification, msg: Message) -> None:
+def dispatch(classification: Classification, msg: Message) -> None:
     logger.info(
         "Dispatching %s (importance=%s) for message_id=%s",
-        result.category.value,
-        result.importance.value,
+        classification.category.value,
+        classification.importance.value,
         msg.get("id"),
     )
     try:
-        archiving.apply_tags(msg, result)
+        archiving.apply_tags(msg, classification)
     except Exception:
         logger.exception("apply_tags failed for %s", msg.get("id"))
-    handler = _HANDLERS.get(result.category)
+    handler = _HANDLERS.get(classification.category)
     if handler:
         try:
-            handler(result, msg)
+            handler(classification, msg)
         except Exception:
             logger.exception(
-                "Action handler failed for %s/%s", result.category.value, msg.get("id")
+                "Action handler failed for %s/%s", classification.category.value, msg.get("id")
             )

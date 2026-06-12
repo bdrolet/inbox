@@ -26,7 +26,7 @@ asana.ASANA_API_KEY    = os.environ.get("ASANA_API_KEY", "")
 asana.ASANA_PROJECT_ID = os.environ.get("ASANA_PROJECT_ID", "")
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--category", choices=["respond", "review"], default="respond")
+parser.add_argument("--category", choices=["respond", "review", "urgent"], default="respond")
 args = parser.parse_args()
 
 # Validate required env vars
@@ -154,23 +154,41 @@ if args.category == "respond" and graph_external_id:
 elif args.category == "respond" and not graph_external_id:
     print("Note: Outlook draft skipped (DB-sourced message — no Graph external_id available)")
 
-# Create Asana task (always use fresh UUID to avoid duplicate external.gid conflicts in testing)
-print("\nCreating Asana task...")
-task_gid = asana.create_task(
-    message_id=str(uuid.uuid4()),
-    subject=msg['subject'],
-    sender=msg['sender'],
-    sender_display=str(msg['sender_display'] or msg['sender']),
-    received_at=str(msg['received_at']),
-    importance=str(msg['importance'] or 'P2'),
+# Build typed objects for the new create_task signature
+from models.message import Message as MsgType
+from models.types import Category, Classification, Importance
+
+msg_obj: MsgType = {
+    "id": uuid.uuid4(),  # fresh UUID — avoids duplicate external.gid conflicts in testing
+    "source": "email",
+    "external_id": str(uuid.uuid4()),
+    "sender": msg['sender'],
+    "sender_display": str(msg['sender_display'] or msg['sender']),
+    "subject": msg['subject'],
+    "body": body_text,
+    "body_html": None,
+    "received_at": msg['received_at'],
+    "thread_id": None,
+    "raw": {},
+    "web_link": web_link,
+}
+result_obj = Classification(
+    category=Category(args.category),
+    confidence=1.0,
+    alternatives={},
     tags=tags,
     reasoning=str(msg['reasoning'] or ''),
-    body=body_text,
-    web_link=web_link,
-    due_date=None,
-    category=args.category,
-    draft_link=draft_link,
-    tag_gids=tag_gids,
+    importance=Importance(str(msg['importance'] or 'P2')),
 )
-print(f"Task GID : {task_gid}")
-print(f"Task URL : https://app.asana.com/0/{asana.ASANA_PROJECT_ID}/{task_gid}")
+
+# Create Asana task
+print("\nCreating Asana task...")
+result_obj.tag_gids = tag_gids
+task = asana.create_task(
+    msg_obj,
+    result_obj,
+    web_link=web_link,
+    draft_link=draft_link,
+)
+print(f"Task GID : {task.gid if task else None}")
+print(f"Task URL : {task.permalink_url if task else 'N/A'}")

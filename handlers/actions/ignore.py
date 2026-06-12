@@ -7,5 +7,5 @@ from services import archiving
 logger = logging.getLogger(__name__)
 
 
-def handle(result: Classification, msg: Message) -> None:
+def handle(classification: Classification, msg: Message) -> None:
     archiving.move_to_folder(msg, "Archive")
