@@ -55,4 +55,5 @@ jobs:
           TF_VAR_grafana_otlp_token: ${{ secrets.TF_VAR_GRAFANA_OTLP_TOKEN }}
           TF_VAR_asana_api_key: ${{ secrets.TF_VAR_ASANA_API_KEY }}
           TF_VAR_asana_project_id: ${{ vars.ASANA_PROJECT_ID }}
+          TF_VAR_hubspot_token: ${{ secrets.TF_VAR_HUBSPOT_TOKEN }}
         run: terraform apply -auto-approve
