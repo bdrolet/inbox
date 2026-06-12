@@ -14,3 +14,9 @@ grafana_otlp_token    = "base64(instance_id:api_key)"
 
 # HubSpot — from Settings → Legacy Apps → your private app → Access Token
 hubspot_token = "pat-na2-..."
+
+# Google Calendar OAuth2 — from GCP Console → APIs & Services → Credentials (Desktop app type)
+# Run scripts/get_google_calendar_token.py locally to generate the refresh token
+google_calendar_client_id       = ""
+google_calendar_client_secret   = ""
+google_calendar_refresh_token   = ""

@@ -84,6 +84,13 @@ resource "google_secret_manager_secret_iam_member" "process_cf_hubspot" {
   member    = "serviceAccount:${google_service_account.process_cf.email}"
 }
 
+resource "google_secret_manager_secret_iam_member" "process_cf_google_calendar" {
+  for_each  = toset(["google-calendar-client-id", "google-calendar-client-secret", "google-calendar-refresh-token"])
+  secret_id = google_secret_manager_secret.secrets[each.key].secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.process_cf.email}"
+}
+
 # ---------------------------------------------------------------------------
 # Webhook Cloud Function service account
 # ---------------------------------------------------------------------------
@@ -109,6 +116,13 @@ resource "google_secret_manager_secret_iam_member" "webhook_cf_label_token" {
 # Publish to inbox-labels topic (human feedback from ntfy action buttons)
 resource "google_pubsub_topic_iam_member" "webhook_cf_labels_publisher" {
   topic  = google_pubsub_topic.inbox_labels.name
+  role   = "roles/pubsub.publisher"
+  member = "serviceAccount:${google_service_account.webhook_cf.email}"
+}
+
+# Publish to inbox-calendar topic (RSVP action buttons)
+resource "google_pubsub_topic_iam_member" "webhook_cf_calendar_publisher" {
+  topic  = google_pubsub_topic.inbox_calendar.name
   role   = "roles/pubsub.publisher"
   member = "serviceAccount:${google_service_account.webhook_cf.email}"
 }

@@ -68,6 +68,23 @@ def process(cloud_event: CloudEvent) -> None:
 
 
 @functions_framework.cloud_event
+def calendar_action(cloud_event: CloudEvent) -> None:
+    data = base64.b64decode(cloud_event.data["message"]["data"]).decode()
+    payload = json.loads(data)
+    message_id = payload.get("message_id")
+    action = payload.get("action")
+    logger.info("Calendar action received: message_id=%s action=%s", message_id, action)
+    otel.flush()
+    try:
+        from services.calendar_response import apply
+
+        apply(message_id=message_id, action=action)
+        logger.info("Calendar action applied — message_id=%s action=%s", message_id, action)
+    finally:
+        otel.flush()
+
+
+@functions_framework.cloud_event
 def label(cloud_event: CloudEvent) -> None:
     data = base64.b64decode(cloud_event.data["message"]["data"]).decode()
     payload = json.loads(data)

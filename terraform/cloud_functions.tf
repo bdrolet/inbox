@@ -291,12 +291,118 @@ resource "google_cloudfunctions2_function" "process" {
       secret     = google_secret_manager_secret.secrets["hubspot-token"].secret_id
       version    = "latest"
     }
+    secret_environment_variables {
+      key        = "GOOGLE_CALENDAR_CLIENT_ID"
+      project_id = var.project_id
+      secret     = google_secret_manager_secret.secrets["google-calendar-client-id"].secret_id
+      version    = "latest"
+    }
+    secret_environment_variables {
+      key        = "GOOGLE_CALENDAR_CLIENT_SECRET"
+      project_id = var.project_id
+      secret     = google_secret_manager_secret.secrets["google-calendar-client-secret"].secret_id
+      version    = "latest"
+    }
+    secret_environment_variables {
+      key        = "GOOGLE_CALENDAR_REFRESH_TOKEN"
+      project_id = var.project_id
+      secret     = google_secret_manager_secret.secrets["google-calendar-refresh-token"].secret_id
+      version    = "latest"
+    }
   }
 
   event_trigger {
     trigger_region = var.region
     event_type     = "google.cloud.pubsub.topic.v1.messagePublished"
     pubsub_topic   = google_pubsub_topic.inbox_messages.id
+    retry_policy   = "RETRY_POLICY_RETRY"
+  }
+
+  depends_on = [
+    google_project_service.apis,
+    google_sql_database_instance.inbox,
+  ]
+}
+
+# ---------------------------------------------------------------------------
+# Calendar action handler function — processes Accept/Decline/Maybe responses
+# ---------------------------------------------------------------------------
+resource "google_cloudfunctions2_function" "calendar_action" {
+  name     = "inbox-calendar-action"
+  location = var.region
+
+  build_config {
+    runtime     = "python311"
+    entry_point = "calendar_action"
+    source {
+      storage_source {
+        bucket = google_storage_bucket.cf_source.name
+        object = google_storage_bucket_object.process_source.name
+      }
+    }
+  }
+
+  service_config {
+    service_account_email = google_service_account.process_cf.email
+    min_instance_count    = 0
+    max_instance_count    = 3
+    timeout_seconds       = 120
+    available_memory      = "512Mi"
+    environment_variables = {
+      GCP_PROJECT_ID            = var.project_id
+      CLOUD_SQL_CONNECTION_NAME = google_sql_database_instance.inbox.connection_name
+      POSTGRES_USER             = var.db_user
+      POSTGRES_DB               = "app"
+      MSAL_SECRET_NAME          = "msal-token-cache"
+    }
+    secret_environment_variables {
+      key        = "POSTGRES_PASSWORD"
+      project_id = var.project_id
+      secret     = google_secret_manager_secret.secrets["inbox-db-password"].secret_id
+      version    = "latest"
+    }
+    secret_environment_variables {
+      key        = "CLIENT_ID"
+      project_id = var.project_id
+      secret     = google_secret_manager_secret.secrets["client-id"].secret_id
+      version    = "latest"
+    }
+    secret_environment_variables {
+      key        = "CLIENT_SECRET"
+      project_id = var.project_id
+      secret     = google_secret_manager_secret.secrets["client-secret"].secret_id
+      version    = "latest"
+    }
+    secret_environment_variables {
+      key        = "TENANT_ID"
+      project_id = var.project_id
+      secret     = google_secret_manager_secret.secrets["tenant-id"].secret_id
+      version    = "latest"
+    }
+    secret_environment_variables {
+      key        = "GOOGLE_CALENDAR_CLIENT_ID"
+      project_id = var.project_id
+      secret     = google_secret_manager_secret.secrets["google-calendar-client-id"].secret_id
+      version    = "latest"
+    }
+    secret_environment_variables {
+      key        = "GOOGLE_CALENDAR_CLIENT_SECRET"
+      project_id = var.project_id
+      secret     = google_secret_manager_secret.secrets["google-calendar-client-secret"].secret_id
+      version    = "latest"
+    }
+    secret_environment_variables {
+      key        = "GOOGLE_CALENDAR_REFRESH_TOKEN"
+      project_id = var.project_id
+      secret     = google_secret_manager_secret.secrets["google-calendar-refresh-token"].secret_id
+      version    = "latest"
+    }
+  }
+
+  event_trigger {
+    trigger_region = var.region
+    event_type     = "google.cloud.pubsub.topic.v1.messagePublished"
+    pubsub_topic   = google_pubsub_topic.inbox_calendar.id
     retry_policy   = "RETRY_POLICY_RETRY"
   }
 

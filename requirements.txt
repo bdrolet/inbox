@@ -28,5 +28,11 @@ opentelemetry-instrumentation-logging>=0.45b0
 # HubSpot CRM
 hubspot-api-client>=10.0
 
+# Google Calendar
+icalendar>=5.0
+google-auth>=2.0
+google-auth-httplib2>=0.2
+google-api-python-client>=2.0
+
 # Environment
 python-dotenv>=1.0.0

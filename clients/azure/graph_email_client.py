@@ -27,7 +27,10 @@ class GraphEmailClient:
         self.tenant_id = os.getenv("TENANT_ID")
         self.redirect_uri = os.getenv("REDIRECT_URI", "http://localhost:8080/callback")
         self.scopes = os.getenv(
-            "SCOPES", "https://graph.microsoft.com/Mail.Read https://graph.microsoft.com/User.Read"
+            "SCOPES",
+            "https://graph.microsoft.com/Mail.Read "
+            "https://graph.microsoft.com/User.Read "
+            "https://graph.microsoft.com/Calendars.ReadWrite",
         ).split()
 
         # Validate configuration
@@ -528,6 +531,93 @@ class GraphEmailClient:
         )
         response.raise_for_status()
         logger.info("Sent email to %s: %s", to, subject)
+
+    def get_attachments(self, message_id: str) -> list[dict]:
+        """GET /me/messages/{id}/attachments — returns raw attachment dicts."""
+        try:
+            response = requests.get(
+                f"{self.graph_endpoint}/me/messages/{message_id}/attachments",
+                headers=self.get_headers(),
+            )
+            response.raise_for_status()
+            return response.json().get("value", [])
+        except requests.exceptions.RequestException as e:
+            detail = e.response.text[:500] if e.response is not None else ""
+            logger.error("get_attachments failed for %s: %s %s", message_id, e, detail)
+            return []
+
+    def _find_event_id_by_ical_uid(self, ical_uid: str) -> str | None:
+        """Return the Graph event id matching iCalUID, or None if not found."""
+        try:
+            response = requests.get(
+                f"{self.graph_endpoint}/me/events",
+                headers=self.get_headers(),
+                params={
+                    "$filter": f"iCalUId eq '{ical_uid}'",
+                    "$select": "id,iCalUId",
+                    "$top": "1",
+                },
+            )
+            response.raise_for_status()
+            items = response.json().get("value", [])
+            return items[0]["id"] if items else None
+        except requests.exceptions.RequestException as e:
+            logger.error("_find_event_id_by_ical_uid failed for %s: %s", ical_uid, e)
+            return None
+
+    def accept_event(self, ical_uid: str) -> bool:
+        """Find event by iCalUID and POST /me/events/{id}/accept."""
+        event_id = self._find_event_id_by_ical_uid(ical_uid)
+        if not event_id:
+            logger.warning("accept_event: no event found for iCalUID %s", ical_uid)
+            return False
+        try:
+            requests.post(
+                f"{self.graph_endpoint}/me/events/{event_id}/accept",
+                headers=self.get_headers(),
+                json={"sendResponse": True},
+            ).raise_for_status()
+            logger.info("Accepted event iCalUID=%s", ical_uid)
+            return True
+        except requests.exceptions.RequestException as e:
+            logger.error("accept_event failed for iCalUID=%s: %s", ical_uid, e)
+            return False
+
+    def decline_event(self, ical_uid: str) -> bool:
+        """POST /me/events/{id}/decline."""
+        event_id = self._find_event_id_by_ical_uid(ical_uid)
+        if not event_id:
+            logger.warning("decline_event: no event found for iCalUID %s", ical_uid)
+            return False
+        try:
+            requests.post(
+                f"{self.graph_endpoint}/me/events/{event_id}/decline",
+                headers=self.get_headers(),
+                json={"sendResponse": True},
+            ).raise_for_status()
+            logger.info("Declined event iCalUID=%s", ical_uid)
+            return True
+        except requests.exceptions.RequestException as e:
+            logger.error("decline_event failed for iCalUID=%s: %s", ical_uid, e)
+            return False
+
+    def tentatively_accept_event(self, ical_uid: str) -> bool:
+        """POST /me/events/{id}/tentativelyAccept."""
+        event_id = self._find_event_id_by_ical_uid(ical_uid)
+        if not event_id:
+            logger.warning("tentatively_accept_event: no event found for iCalUID %s", ical_uid)
+            return False
+        try:
+            requests.post(
+                f"{self.graph_endpoint}/me/events/{event_id}/tentativelyAccept",
+                headers=self.get_headers(),
+                json={"sendResponse": True},
+            ).raise_for_status()
+            logger.info("Tentatively accepted event iCalUID=%s", ical_uid)
+            return True
+        except requests.exceptions.RequestException as e:
+            logger.error("tentatively_accept_event failed for iCalUID=%s: %s", ical_uid, e)
+            return False
 
     def move_message_to_action_folder(
         self, message_id: str, folder_display_name: str

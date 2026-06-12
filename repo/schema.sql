@@ -69,3 +69,20 @@ CREATE TABLE IF NOT EXISTS asana_tag_cache (
     tag_gid    TEXT NOT NULL,
     created_at TIMESTAMPTZ DEFAULT now()
 );
+
+CREATE TABLE IF NOT EXISTS calendar_invites (
+    id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    message_id       UUID REFERENCES messages(id),
+    graph_message_id TEXT,
+    ical_uid         TEXT,
+    title            TEXT,
+    start_time       TIMESTAMPTZ,
+    end_time         TIMESTAMPTZ,
+    timezone         TEXT,
+    organizer        TEXT,
+    zoom_link        TEXT,
+    location         TEXT,
+    user_response    TEXT,        -- NULL | accept | decline | maybe
+    responded_at     TIMESTAMPTZ,
+    created_at       TIMESTAMPTZ DEFAULT NOW()
+);

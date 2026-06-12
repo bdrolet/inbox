@@ -1,17 +1,20 @@
 locals {
   secrets = {
-    "client-id"             = var.client_id
-    "client-secret"         = var.client_secret
-    "tenant-id"             = var.tenant_id
-    "openai-api-key"        = var.openai_api_key
-    "anthropic-api-key"     = var.anthropic_api_key
-    "msal-token-cache"      = var.msal_token_cache
-    "inbox-db-password"     = var.db_password
-    "webhook-label-token"   = var.webhook_label_token
-    "grafana-otlp-endpoint" = var.grafana_otlp_endpoint
-    "grafana-otlp-token"    = var.grafana_otlp_token
-    "asana-api-key"         = var.asana_api_key
-    "hubspot-token"         = var.hubspot_token
+    "client-id"                       = var.client_id
+    "client-secret"                   = var.client_secret
+    "tenant-id"                       = var.tenant_id
+    "openai-api-key"                  = var.openai_api_key
+    "anthropic-api-key"               = var.anthropic_api_key
+    "msal-token-cache"                = var.msal_token_cache
+    "inbox-db-password"               = var.db_password
+    "webhook-label-token"             = var.webhook_label_token
+    "grafana-otlp-endpoint"           = var.grafana_otlp_endpoint
+    "grafana-otlp-token"              = var.grafana_otlp_token
+    "asana-api-key"                   = var.asana_api_key
+    "hubspot-token"                   = var.hubspot_token
+    "google-calendar-client-id"       = var.google_calendar_client_id
+    "google-calendar-client-secret"   = var.google_calendar_client_secret
+    "google-calendar-refresh-token"   = var.google_calendar_refresh_token
   }
 
   # msal-token-cache is managed separately so CI can't overwrite the live token

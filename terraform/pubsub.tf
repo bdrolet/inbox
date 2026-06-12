@@ -10,3 +10,8 @@ resource "google_pubsub_topic" "inbox_labels" {
   name       = "inbox-labels"
   depends_on = [google_project_service.apis]
 }
+
+resource "google_pubsub_topic" "inbox_calendar" {
+  name       = "inbox-calendar"
+  depends_on = [google_project_service.apis]
+}

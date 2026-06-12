@@ -4,7 +4,7 @@ import urllib.parse
 import httpx
 
 from models.message import Message
-from models.types import Classification, CreatedTask, EmailSummary
+from models.types import CalendarInvite, Classification, CreatedTask, EmailSummary
 
 ASANA_API_KEY = os.environ.get("ASANA_API_KEY", "")
 ASANA_PROJECT_ID = os.environ.get("ASANA_PROJECT_ID", "")
@@ -62,6 +62,7 @@ def create_task(
     due_date: str | None = None,
     draft_link: str | None = None,
     summary: EmailSummary | None = None,
+    invite: CalendarInvite | None = None,
 ) -> CreatedTask | None:
     """Create an Asana task. Returns None if Asana is not configured."""
     if not ASANA_API_KEY or not ASANA_PROJECT_ID:
@@ -134,6 +135,47 @@ def create_task(
     else:
         links_html = ""
 
+    calendar_html = ""
+    if invite:
+        webhook_url = os.environ.get("WEBHOOK_URL", "")
+        label_token = os.environ.get("WEBHOOK_LABEL_TOKEN", "")
+
+        def cal_url(action: str) -> str:
+            params = f"id={message_id}&action={action}"
+            if label_token:
+                params += f"&token={urllib.parse.quote(label_token, safe='')}"
+            return f"{webhook_url}/calendar?{params}"
+
+        start_str = invite.start.strftime("%Y-%m-%d %H:%M %Z") if invite.start else ""
+        end_str = invite.end.strftime("%H:%M %Z") if invite.end else ""
+        gcal_template = (
+            "https://calendar.google.com/calendar/render?action=TEMPLATE"
+            f"&text={urllib.parse.quote(invite.title or '')}"
+            f"&dates={invite.start.strftime('%Y%m%dT%H%M%SZ') if invite.start else ''}"
+            f"/{invite.end.strftime('%Y%m%dT%H%M%SZ') if invite.end else ''}"
+            f"&location={urllib.parse.quote(invite.location or invite.zoom_link or '')}"
+        )
+        zoom_item = (
+            f'<li><a href="{esc(invite.zoom_link)}">Join Zoom</a></li>'
+            if invite.zoom_link
+            else ""
+        )
+        calendar_html = (
+            "\n<strong>Calendar Invite</strong>"
+            "<ul>"
+            f"<li><strong>When:</strong> {esc(start_str)} – {esc(end_str)}</li>"
+            f"<li><strong>Organizer:</strong> {esc(invite.organizer or '')}</li>"
+            + (f"<li><strong>Location:</strong> {esc(invite.location)}</li>" if invite.location else "")
+            + zoom_item
+            + f'<li><a href="{esc(gcal_template)}">Open in Google Calendar</a></li>'
+            + "</ul>"
+            "<strong>RSVP</strong><ul>"
+            f'<li><a href="{esc(cal_url("accept"))}">Accept</a></li>'
+            f'<li><a href="{esc(cal_url("decline"))}">Decline</a></li>'
+            f'<li><a href="{esc(cal_url("maybe"))}">Maybe</a></li>'
+            "</ul>"
+        )
+
     html_notes = (
         "<body>"
         "<ul>"
@@ -149,6 +191,7 @@ def create_task(
         f"\n{outlook_link}"
         "\n<strong>Actions</strong>"
         f"<ul>{action_items}</ul>"
+        f"{calendar_html}"
         "</body>"
     )
 
