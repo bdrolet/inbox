@@ -26,7 +26,7 @@ asana.ASANA_API_KEY    = os.environ.get("ASANA_API_KEY", "")
 asana.ASANA_PROJECT_ID = os.environ.get("ASANA_PROJECT_ID", "")
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--category", choices=["respond", "review"], default="respond")
+parser.add_argument("--category", choices=["respond", "review", "urgent"], default="respond")
 args = parser.parse_args()
 
 # Validate required env vars
@@ -156,7 +156,7 @@ elif args.category == "respond" and not graph_external_id:
 
 # Create Asana task (always use fresh UUID to avoid duplicate external.gid conflicts in testing)
 print("\nCreating Asana task...")
-task_gid = asana.create_task(
+task = asana.create_task(
     message_id=str(uuid.uuid4()),
     subject=msg['subject'],
     sender=msg['sender'],
@@ -172,5 +172,5 @@ task_gid = asana.create_task(
     draft_link=draft_link,
     tag_gids=tag_gids,
 )
-print(f"Task GID : {task_gid}")
-print(f"Task URL : https://app.asana.com/0/{asana.ASANA_PROJECT_ID}/{task_gid}")
+print(f"Task GID : {task.gid if task else None}")
+print(f"Task URL : {task.permalink_url if task else 'N/A'}")

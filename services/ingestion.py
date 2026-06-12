@@ -22,7 +22,7 @@ def normalize(email: Email, raw: dict | None = None) -> Message:
         external_id=email.id or "",
         sender=email.from_email or "",
         sender_display=email.from_name or "",
-        subject=email.subject or "",
+        subject=(email.subject or "").removeprefix("[LOCAL-TEST] "),
         body=email.get_body_text(),
         body_html=email.body_content if email.body_type == "html" else None,
         received_at=received_at,

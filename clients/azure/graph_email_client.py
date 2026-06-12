@@ -506,6 +506,29 @@ class GraphEmailClient:
             logger.error("create_reply_draft failed for %s: %s %s", external_id, e, detail)
             return None
 
+    def send_mail(
+        self,
+        to: str,
+        subject: str,
+        body: str,
+        save_to_sent: bool = False,
+    ) -> None:
+        """Send an email via Graph API. Requires Mail.Send scope."""
+        response = requests.post(
+            f"{self.graph_endpoint}/me/sendMail",
+            headers=self.get_headers(),
+            json={
+                "message": {
+                    "subject": subject,
+                    "body": {"contentType": "Text", "content": body},
+                    "toRecipients": [{"emailAddress": {"address": to}}],
+                },
+                "saveToSentItems": save_to_sent,
+            },
+        )
+        response.raise_for_status()
+        logger.info("Sent email to %s: %s", to, subject)
+
     def move_message_to_action_folder(
         self, message_id: str, folder_display_name: str
     ) -> dict | None:

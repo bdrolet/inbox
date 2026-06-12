@@ -3,6 +3,7 @@ Full message processing pipeline: ingest → embed → classify → store → di
 """
 
 import logging
+import os
 import time
 
 from opentelemetry.trace import StatusCode
@@ -46,6 +47,10 @@ def run(notification: dict, model, context=None) -> None:
 
             if email is None:
                 logger.warning(f"Could not fetch email {message_id} — skipping")
+                return
+
+            if os.environ.get("GCP_PROJECT_ID") and "[LOCAL-TEST]" in (email.subject or ""):
+                logger.info("Skipping local-test email %s in GCP", message_id)
                 return
 
             msg = normalize(email, raw=notification)
