@@ -25,6 +25,7 @@ class Classification:
     tags: list[str]
     reasoning: str
     importance: Importance = Importance.P2
+    tag_gids: list[str] = field(default_factory=list)
 
 
 @dataclass

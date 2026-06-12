@@ -3,7 +3,8 @@ import urllib.parse
 
 import httpx
 
-from models.types import CreatedTask, EmailSummary
+from models.message import Message
+from models.types import Classification, CreatedTask, EmailSummary
 
 ASANA_API_KEY = os.environ.get("ASANA_API_KEY", "")
 ASANA_PROJECT_ID = os.environ.get("ASANA_PROJECT_ID", "")
@@ -54,25 +55,28 @@ def _create_tag(name: str, workspace_gid: str) -> str:
 
 
 def create_task(
-    message_id: str,
-    subject: str,
-    sender: str,
-    sender_display: str,
-    received_at: str,
-    importance: str,
-    tags: list[str],
-    reasoning: str,
-    body: str,
-    web_link: str | None,
-    due_date: str | None,
-    category: str = "review",
+    msg: Message,
+    result: Classification,
+    *,
+    web_link: str | None = None,
+    due_date: str | None = None,
     draft_link: str | None = None,
-    tag_gids: list[str] | None = None,
     summary: EmailSummary | None = None,
 ) -> CreatedTask | None:
     """Create an Asana task. Returns None if Asana is not configured."""
     if not ASANA_API_KEY or not ASANA_PROJECT_ID:
         return None
+
+    message_id = str(msg["id"])
+    subject = msg["subject"]
+    sender = msg["sender"]
+    sender_display = msg.get("sender_display") or msg["sender"]
+    received_at = str(msg["received_at"])
+    category = result.category.value
+    importance = result.importance.value
+    tags = result.tags
+    reasoning = result.reasoning
+    body = msg["body"] or ""
 
     webhook_url = os.environ.get("WEBHOOK_URL", "")
     label_token = os.environ.get("WEBHOOK_LABEL_TOKEN", "")
@@ -156,8 +160,8 @@ def create_task(
     }
     if due_date:
         payload["due_on"] = due_date
-    if tag_gids:
-        payload["tags"] = tag_gids
+    if result.tag_gids:
+        payload["tags"] = result.tag_gids
 
     resp = httpx.post(
         f"{_BASE}/tasks",
