@@ -79,6 +79,7 @@ def label(cloud_event: CloudEvent) -> None:
         payload.get("label"),
         payload.get("source"),
     )
+    otel.flush()
     try:
         labeling.apply_label(
             message_id=payload["message_id"],

@@ -71,12 +71,40 @@ sum(increase(inbox_pipeline_errors_total[24h]))
 
 Avoid very short windows (e.g., `[5m]`) — with sparse traffic there may be no invocations in that window and the query returns empty.
 
+## Metric naming: unit expansion
+
+The OTel SDK expands unit abbreviations in metric names when converting to Prometheus format:
+
+| Defined as | Prometheus name |
+|---|---|
+| `create_histogram("inbox.stage.duration", unit="ms")` | `inbox_stage_duration_milliseconds_bucket` |
+| `create_counter("inbox.emails.processed")` | `inbox_emails_processed_total` |
+| `create_histogram("inbox.classification.confidence", unit="{score}")` | `inbox_classification_confidence_bucket` |
+| `create_histogram("inbox.neighbors.count", unit="{count}")` | `inbox_neighbors_count_bucket` |
+
+Use the expanded names in PromQL queries. To find the actual names in Mimir:
+```promql
+# In Grafana Explore (Prometheus datasource):
+{__name__=~"inbox.*"}
+```
+
+Or via the API:
+```bash
+curl -su "$GRAFANA_PROM_INSTANCE_ID:$GRAFANA_PROM_TOKEN" \
+  "$GRAFANA_PROM_URL/api/v1/label/__name__/values" | python3 -m json.tool | grep inbox
+```
+
+## Why some metrics appear while others don't
+
+Counter value magnitude matters. In practice, `inbox_claude_tokens_total` (values ~900 per invocation) appeared in Grafana while `inbox_emails_processed_total` (value always 1) showed `increase()` = 0. Both have the same underlying issue — single cumulative data point — but `increase()` over a large value is easier for Mimir to recover from sparse data. The fix (double flush) is still required for correctness of both.
+
 ## Debugging missing metrics
 
-1. **Check the DB first** — `classifications` is the authoritative record of what was processed. Compare against Grafana to quantify the gap.
+1. **Check the DB first** — `classifications` is the authoritative record of what was processed. Compare against Grafana to quantify the gap. Use `/querying-inbox-db`.
 2. **Check GCP logs** — with `logging.basicConfig(level=logging.INFO)` set in `main.py`, OTLP export errors from `opentelemetry.sdk.metrics._internal.export` will appear in `run.googleapis.com/stderr` as `ERROR` entries. Look for `Exception while exporting metrics`.
 3. **Single data point** — if Grafana shows the metric occasionally but not consistently, the baseline flush is likely missing. A single cumulative data point is invisible to `increase()`.
 4. **Auth issues** — the OTLP token in Secret Manager (`grafana-otlp-token`) must be `base64(instance_id:api_key)`. Verify with `gcloud secrets versions access latest --secret=grafana-otlp-token`.
+5. **Wrong Prometheus instance ID** — Grafana Cloud has separate numeric IDs for the Grafana dashboard instance and the Prometheus/Mimir datasource. The Prometheus ID is shown in Connections → Data sources → Prometheus → Username / Instance ID. They are different numbers.
 
 ## References
 
