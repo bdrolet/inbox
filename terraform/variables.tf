@@ -137,3 +137,10 @@ variable "asana_project_id" {
   type        = string
   default     = ""
 }
+
+variable "hubspot_token" {
+  description = "HubSpot private app access token (pat-na2-...)"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
