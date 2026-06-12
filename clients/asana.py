@@ -3,7 +3,7 @@ import urllib.parse
 
 import httpx
 
-from models.types import EmailSummary
+from models.types import CreatedTask, EmailSummary
 
 ASANA_API_KEY = os.environ.get("ASANA_API_KEY", "")
 ASANA_PROJECT_ID = os.environ.get("ASANA_PROJECT_ID", "")
@@ -69,8 +69,8 @@ def create_task(
     draft_link: str | None = None,
     tag_gids: list[str] | None = None,
     summary: EmailSummary | None = None,
-) -> str | None:
-    """Create an Asana task and return its GID. Returns None if Asana is not configured."""
+) -> CreatedTask | None:
+    """Create an Asana task. Returns None if Asana is not configured."""
     if not ASANA_API_KEY or not ASANA_PROJECT_ID:
         return None
 
@@ -162,6 +162,7 @@ def create_task(
     resp = httpx.post(
         f"{_BASE}/tasks",
         headers={"Authorization": f"Bearer {ASANA_API_KEY}"},
+        params={"opt_fields": "gid,permalink_url"},
         json={"data": payload},
         timeout=10,
     )
@@ -176,4 +177,5 @@ def create_task(
             )
             return None
     resp.raise_for_status()
-    return resp.json()["data"]["gid"]
+    data = resp.json()["data"]
+    return CreatedTask(gid=data["gid"], permalink_url=data["permalink_url"])

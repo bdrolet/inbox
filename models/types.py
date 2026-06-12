@@ -31,3 +31,9 @@ class Classification:
 class EmailSummary:
     key_points: list[str] = field(default_factory=list)
     relevant_links: list[tuple[str, str]] = field(default_factory=list)  # (url, label)
+
+
+@dataclass
+class CreatedTask:
+    gid: str
+    permalink_url: str

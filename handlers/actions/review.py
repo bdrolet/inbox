@@ -34,7 +34,7 @@ def handle(result: Classification, msg: Message) -> None:
         due_date = None
         if result.importance in (Importance.P0, Importance.P1):
             due_date = deadline_svc.extract_deadline(msg)
-        task_gid = asana.create_task(
+        task = asana.create_task(
             message_id=str(msg["id"]),
             subject=msg["subject"],
             sender=msg["sender"],
@@ -50,7 +50,10 @@ def handle(result: Classification, msg: Message) -> None:
             summary=summary,
         )
         logger.info(
-            "Asana task created: gid=%s due=%s for message_id=%s", task_gid, due_date, msg["id"]
+            "Asana task created: gid=%s due=%s for message_id=%s",
+            task.gid if task else None,
+            due_date,
+            msg["id"],
         )
     except Exception:
         logger.exception("Asana task creation failed for message_id=%s", msg["id"])

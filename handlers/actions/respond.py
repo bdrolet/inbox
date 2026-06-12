@@ -33,7 +33,7 @@ def handle(result: Classification, msg: Message) -> None:
     try:
         draft_text = draft_svc.generate(msg)
         draft_link = get_graph_client().create_reply_draft(msg["external_id"], draft_text)
-        task_gid = asana.create_task(
+        task = asana.create_task(
             message_id=str(msg["id"]),
             subject=msg["subject"],
             sender=msg["sender"],
@@ -52,7 +52,7 @@ def handle(result: Classification, msg: Message) -> None:
         )
         logger.info(
             "Respond task created: gid=%s draft=%s for message_id=%s",
-            task_gid,
+            task.gid if task else None,
             draft_link,
             msg["id"],
         )
