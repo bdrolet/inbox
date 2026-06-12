@@ -157,9 +157,15 @@ def run(notification: dict, model, context=None) -> None:
             total_ms = (time.monotonic() - pipeline_start) * 1000
             otel.stage_duration.record(total_ms, {"stage": "total"})
             otel.emails_processed.add(
-                1, {"category": classification.category.value, "importance": classification.importance.value}
+                1,
+                {
+                    "category": classification.category.value,
+                    "importance": classification.importance.value,
+                },
             )
-            otel.confidence_hist.record(classification.confidence, {"category": classification.category.value})
+            otel.confidence_hist.record(
+                classification.confidence, {"category": classification.category.value}
+            )
             otel.neighbors_hist.record(len(neighbors))
 
             logger.info(
