@@ -156,16 +156,18 @@ def create_task(
             f"&location={urllib.parse.quote(invite.location or invite.zoom_link or '')}"
         )
         zoom_item = (
-            f'<li><a href="{esc(invite.zoom_link)}">Join Zoom</a></li>'
-            if invite.zoom_link
-            else ""
+            f'<li><a href="{esc(invite.zoom_link)}">Join Zoom</a></li>' if invite.zoom_link else ""
         )
         calendar_html = (
             "\n<strong>Calendar Invite</strong>"
             "<ul>"
             f"<li><strong>When:</strong> {esc(start_str)} – {esc(end_str)}</li>"
             f"<li><strong>Organizer:</strong> {esc(invite.organizer or '')}</li>"
-            + (f"<li><strong>Location:</strong> {esc(invite.location)}</li>" if invite.location else "")
+            + (
+                f"<li><strong>Location:</strong> {esc(invite.location)}</li>"
+                if invite.location
+                else ""
+            )
             + zoom_item
             + f'<li><a href="{esc(gcal_template)}">Open in Google Calendar</a></li>'
             + "</ul>"

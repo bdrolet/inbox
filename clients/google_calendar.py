@@ -1,8 +1,8 @@
 import logging
 import os
 
-from googleapiclient.discovery import build
 from google.oauth2.credentials import Credentials
+from googleapiclient.discovery import build
 
 from models.types import CalendarInvite
 
@@ -62,11 +62,7 @@ def add_event(invite: CalendarInvite) -> str | None:
         if invite.zoom_link:
             body["description"] = invite.zoom_link
 
-        event = (
-            service.events()
-            .insert(calendarId="primary", body=body)
-            .execute()
-        )
+        event = service.events().insert(calendarId="primary", body=body).execute()
         link = event.get("htmlLink")
         logger.info("Added Google Calendar event: %s", link)
         return link

@@ -5,10 +5,10 @@ from datetime import datetime, timezone
 
 from icalendar import Calendar
 
+import repo.calendar_invites as repo_cal
 from clients.db import get_conn
 from models.message import Message
 from models.types import CalendarInvite
-import repo.calendar_invites as repo_cal
 
 logger = logging.getLogger(__name__)
 

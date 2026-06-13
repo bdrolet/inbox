@@ -1,9 +1,9 @@
 import logging
 
 import clients.google_calendar as gcal
+import repo.calendar_invites as repo_cal
 from clients.db import get_conn
 from clients.graph import get_graph_client
-import repo.calendar_invites as repo_cal
 
 logger = logging.getLogger(__name__)
 
