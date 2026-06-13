@@ -5,7 +5,6 @@ from clients.graph import get_graph_client
 from handlers.actions._shared import prepare
 from models.message import Message
 from models.types import Classification
-from services import calendar_invite as calendar_invite_svc
 from services import draft_reply as draft_svc
 
 logger = logging.getLogger(__name__)
@@ -34,6 +33,3 @@ def handle(classification: Classification, msg: Message) -> None:
         )
     except Exception:
         logger.exception("Respond task/draft creation failed for message_id=%s", msg["id"])
-
-    if invite:
-        calendar_invite_svc.store(invite)

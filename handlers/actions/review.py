@@ -4,7 +4,6 @@ import clients.asana as asana
 from handlers.actions._shared import prepare
 from models.message import Message
 from models.types import Classification
-from services import calendar_invite as calendar_invite_svc
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +28,3 @@ def handle(classification: Classification, msg: Message) -> None:
         )
     except Exception:
         logger.exception("Asana task creation failed for message_id=%s", msg["id"])
-
-    if invite:
-        calendar_invite_svc.store(invite)

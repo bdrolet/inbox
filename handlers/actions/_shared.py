@@ -25,4 +25,6 @@ def prepare(
         else None
     )
     invite = calendar_invite_svc.detect(msg, get_graph_client())
+    if invite:
+        calendar_invite_svc.store(invite)
     return web_link, summary, due_date, invite
