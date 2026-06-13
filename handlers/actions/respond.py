@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 
 def handle(classification: Classification, msg: Message) -> None:
-    web_link, summary, due_date = prepare(msg, classification, folder="reply_required")
+    web_link, summary, due_date, invite = prepare(msg, classification, folder="reply_required")
 
     try:
         draft_text = draft_svc.generate(msg)
@@ -23,6 +23,7 @@ def handle(classification: Classification, msg: Message) -> None:
             due_date=due_date,
             draft_link=draft_link,
             summary=summary,
+            invite=invite,
         )
         logger.info(
             "Respond task created: gid=%s draft=%s for message_id=%s",

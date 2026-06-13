@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from datetime import datetime
 from enum import Enum
 
 
@@ -38,3 +39,17 @@ class EmailSummary:
 class CreatedTask:
     gid: str
     permalink_url: str
+
+
+@dataclass
+class CalendarInvite:
+    message_id: str
+    graph_message_id: str
+    ical_uid: str
+    title: str
+    start: datetime
+    end: datetime
+    timezone: str
+    organizer: str
+    zoom_link: str | None
+    location: str | None

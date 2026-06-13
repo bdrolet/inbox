@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 
 def handle(classification: Classification, msg: Message) -> None:
-    web_link, summary, due_date = prepare(msg, classification)
+    web_link, summary, due_date, invite = prepare(msg, classification)
 
     task_url: str | None = None
     try:
@@ -20,6 +20,7 @@ def handle(classification: Classification, msg: Message) -> None:
             web_link=web_link,
             due_date=due_date,
             summary=summary,
+            invite=invite,
         )
         if task:
             task_url = task.permalink_url

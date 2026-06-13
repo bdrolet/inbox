@@ -1,11 +1,11 @@
 import logging
 
+from handlers.actions._shared import prepare
 from models.message import Message
 from models.types import Classification
-from services import archiving
 
 logger = logging.getLogger(__name__)
 
 
 def handle(classification: Classification, msg: Message) -> None:
-    archiving.move_to_folder(msg, "Archive")
+    prepare(msg, classification, folder="Archive")
