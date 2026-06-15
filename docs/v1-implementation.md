@@ -466,15 +466,35 @@ All five categories drive folder moves or notifications. Urgent messages push to
 
 ---
 
-## After Phase 4
+## Phase 5: Decommission old Cloud Run Job — ✅ Complete
 
-The system is fully functional for v1. Before going to production, complete Phase 5:
+**What it does**: Removes the old OpenAI/8-category `email-analysis` Cloud Run Job and all supporting GCP infrastructure now that the Claude Sonnet pipeline (Phases 1–4) is fully live.
 
-1. Run `scripts/bootstrap_labels.py` to hand-label 30–50 past messages
-2. Run the new pipeline in shadow mode alongside the old system; compare output
-3. Decommission the old Cloud Run Job (delete from Terraform, remove `Dockerfile.analyze-emails`, delete `openai-api-key` secret)
+### What was removed
 
-See [inbox-architecture.md](inbox-architecture.md) for full Phase 5 details.
+| Item | Details |
+|------|---------|
+| `scripts/analyze_emails.py` | Old job entry point (imported non-existent `EmailProcessor`) |
+| `Dockerfile.analyze-emails` | Docker image definition for the old job |
+| `terraform/cloud_run_job.tf` | `google_service_account.job_sa` + `google_cloud_run_v2_job.email_analysis` |
+| `terraform/registry.tf` | Artifact Registry repo `email-analysis` (437 MB of stale images) |
+| `terraform/outputs.tf` | All 4 outputs referenced deleted resources |
+| `terraform/scheduler.tf` lines 1–22 | `email-analysis-daily` scheduler job + `job_sa` IAM binding |
+| `terraform/secrets.tf` | `openai-api-key` secret entry; `job_sa` Secret Manager accessor + MSAL version-manager IAM bindings |
+| `terraform/variables.tf` | `openai_api_key`, `schedule_cron`, `schedule_timezone`, `job_memory`, `job_cpu`, `job_timeout` |
+| `.github/workflows/deploy.yml` | `TF_VAR_openai_api_key` CI env var |
+
+### GCP resources destroyed
+
+`terraform apply` destroyed: Cloud Run Job `email-analysis`, Cloud Scheduler job `email-analysis-daily`, service account `email-analysis-job@bens-project-462804.iam.gserviceaccount.com`, Artifact Registry repo `email-analysis`, secret `openai-api-key`, and all associated Secret Manager IAM bindings.
+
+### Remaining manual step
+
+Delete the GitHub Actions secret `TF_VAR_OPENAI_API_KEY` from the repository settings page (Terraform does not manage GitHub secrets).
+
+---
+
+## After Phase 5
 
 ---
 
