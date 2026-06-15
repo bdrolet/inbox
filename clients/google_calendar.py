@@ -69,14 +69,22 @@ def add_event(invite: CalendarInvite) -> str | None:
             event = service.events().insert(calendarId="primary", body=body).execute()
         except HttpError as e:
             if e.resp.status == 409:
-                # iCalUID already exists — fetch the existing event's link
+                # iCalUID already exists — update the existing event with current details
                 existing = service.events().list(
                     calendarId="primary",
                     iCalUID=invite.ical_uid,
                     singleEvents=True,
                 ).execute()
                 items = existing.get("items", [])
-                return items[0].get("htmlLink") if items else None
+                if not items:
+                    return None
+                event = service.events().patch(
+                    calendarId="primary",
+                    eventId=items[0]["id"],
+                    body=body,
+                ).execute()
+                logger.info("Updated existing Google Calendar event: %s", event.get("htmlLink"))
+                return event.get("htmlLink")
             raise
         link = event.get("htmlLink")
         logger.info("Added Google Calendar event: %s", link)
