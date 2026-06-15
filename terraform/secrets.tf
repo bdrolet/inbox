@@ -3,7 +3,6 @@ locals {
     "client-id"                       = var.client_id
     "client-secret"                   = var.client_secret
     "tenant-id"                       = var.tenant_id
-    "openai-api-key"                  = var.openai_api_key
     "anthropic-api-key"               = var.anthropic_api_key
     "msal-token-cache"                = var.msal_token_cache
     "inbox-db-password"               = var.db_password
@@ -62,17 +61,3 @@ data "google_secret_manager_secret" "ntfy_token" {
   project   = var.project_id
 }
 
-# The Cloud Run service account needs to read all secrets
-resource "google_secret_manager_secret_iam_member" "accessor" {
-  for_each  = local.secrets
-  secret_id = google_secret_manager_secret.secrets[each.key].secret_id
-  role      = "roles/secretmanager.secretAccessor"
-  member    = "serviceAccount:${google_service_account.job_sa.email}"
-}
-
-# The Cloud Run service account also needs to add new versions to the MSAL cache secret
-resource "google_secret_manager_secret_iam_member" "msal_version_manager" {
-  secret_id = google_secret_manager_secret.secrets["msal-token-cache"].secret_id
-  role      = "roles/secretmanager.secretVersionManager"
-  member    = "serviceAccount:${google_service_account.job_sa.email}"
-}
