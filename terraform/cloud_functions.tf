@@ -309,6 +309,12 @@ resource "google_cloudfunctions2_function" "process" {
       secret     = google_secret_manager_secret.secrets["google-calendar-refresh-token"].secret_id
       version    = "latest"
     }
+    secret_environment_variables {
+      key        = "HF_TOKEN"
+      project_id = var.project_id
+      secret     = google_secret_manager_secret.secrets["hf-token"].secret_id
+      version    = "latest"
+    }
   }
 
   event_trigger {

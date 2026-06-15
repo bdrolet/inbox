@@ -125,6 +125,13 @@ variable "grafana_otlp_token" {
   default     = ""
 }
 
+variable "hf_token" {
+  description = "HuggingFace API token (read scope) — prevents rate limiting on BGE model download during cold starts"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
 variable "asana_api_key" {
   description = "Asana Personal Access Token — used by inbox-process CF to create review tasks"
   type        = string

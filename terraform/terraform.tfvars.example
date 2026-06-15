@@ -12,6 +12,9 @@ msal_token_cache = "{\"Account\":{},\"AccessToken\":{},\"RefreshToken\":{},\"IdT
 grafana_otlp_endpoint = "https://otlp-gateway-prod-<region>.grafana.net/otlp"
 grafana_otlp_token    = "base64(instance_id:api_key)"
 
+# HuggingFace — from huggingface.co/settings/tokens (read scope)
+hf_token = "hf_..."
+
 # HubSpot — from Settings → Legacy Apps → your private app → Access Token
 hubspot_token = "pat-na2-..."
 
