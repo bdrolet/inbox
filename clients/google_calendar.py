@@ -3,6 +3,7 @@ import os
 
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
 
 from models.types import CalendarInvite
 
@@ -64,7 +65,19 @@ def add_event(invite: CalendarInvite) -> str | None:
         if invite.zoom_link:
             body["description"] = invite.zoom_link
 
-        event = service.events().insert(calendarId="primary", body=body).execute()
+        try:
+            event = service.events().insert(calendarId="primary", body=body).execute()
+        except HttpError as e:
+            if e.resp.status == 409:
+                # iCalUID already exists — fetch the existing event's link
+                existing = service.events().list(
+                    calendarId="primary",
+                    iCalUID=invite.ical_uid,
+                    singleEvents=True,
+                ).execute()
+                items = existing.get("items", [])
+                return items[0].get("htmlLink") if items else None
+            raise
         link = event.get("htmlLink")
         logger.info("Added Google Calendar event: %s", link)
         return link
