@@ -96,7 +96,11 @@ class _Pg8000Conn:
 
     def execute(self, query: str, params: Optional[tuple] = None) -> _DictCursor:
         cursor = self._conn.cursor()
-        cursor.execute(query, _adapt_params(params))
+        adapted = _adapt_params(params)
+        if adapted is None:
+            cursor.execute(query)
+        else:
+            cursor.execute(query, adapted)
         return _DictCursor(cursor)
 
     def commit(self) -> None:
