@@ -21,6 +21,9 @@ import logging
 from datetime import datetime
 import time
 
+# Force line-buffered output so progress appears immediately when running via Claude or pipes
+sys.stdout.reconfigure(line_buffering=True)
+
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../.."))
