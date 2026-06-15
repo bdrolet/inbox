@@ -45,7 +45,6 @@ jobs:
           TF_VAR_client_id: ${{ secrets.TF_VAR_CLIENT_ID }}
           TF_VAR_client_secret: ${{ secrets.TF_VAR_CLIENT_SECRET }}
           TF_VAR_tenant_id: ${{ secrets.TF_VAR_TENANT_ID }}
-          TF_VAR_openai_api_key: ${{ secrets.TF_VAR_OPENAI_API_KEY }}
           TF_VAR_anthropic_api_key: ${{ secrets.TF_VAR_ANTHROPIC_API_KEY }}
           TF_VAR_msal_token_cache: ${{ secrets.TF_VAR_MSAL_TOKEN_CACHE }}
           TF_VAR_db_password: ${{ secrets.TF_VAR_DB_PASSWORD }}

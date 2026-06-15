@@ -175,7 +175,6 @@ data "archive_file" "process_source" {
     ".git",
     ".claude",
     "docs",
-    "Dockerfile.analyze-emails",
     "Dockerfile.inbox-worker",
     ".dockerignore",
     ".token_cache.json",
