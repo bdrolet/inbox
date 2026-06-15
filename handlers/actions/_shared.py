@@ -13,6 +13,12 @@ def prepare(
     folder: str | None = None,
 ) -> tuple[str | None, EmailSummary, str | None, CalendarInvite | None]:
     """Move to folder (if given), generate summary, extract deadline, detect calendar invite."""
+    # Detect invite BEFORE folder move — Exchange invalidates the message ID after a move,
+    # making the /attachments endpoint return 404 on the original external_id.
+    invite = calendar_invite_svc.detect(msg, get_graph_client())
+    if invite:
+        calendar_invite_svc.store(invite)
+
     web_link = msg.get("web_link")
     if folder:
         moved = archiving.move_to_folder(msg, folder)
@@ -24,7 +30,4 @@ def prepare(
         if classification.importance in (Importance.P0, Importance.P1)
         else None
     )
-    invite = calendar_invite_svc.detect(msg, get_graph_client())
-    if invite:
-        calendar_invite_svc.store(invite)
     return web_link, summary, due_date, invite
