@@ -30,13 +30,15 @@ def _load_credentials() -> Credentials:
         client_secret = os.environ["GOOGLE_CALENDAR_CLIENT_SECRET"]
         refresh_token = os.environ["GOOGLE_CALENDAR_REFRESH_TOKEN"]
 
+    # Do not pass scopes — google-auth includes them in the refresh request,
+    # which causes invalid_scope when the token server sees scopes it didn't
+    # explicitly grant. The refresh token already carries its own scope grant.
     return Credentials(
         token=None,
         refresh_token=refresh_token,
         token_uri="https://oauth2.googleapis.com/token",
         client_id=client_id,
         client_secret=client_secret,
-        scopes=["https://www.googleapis.com/auth/calendar"],
     )
 
 
