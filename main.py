@@ -127,16 +127,22 @@ def search(request):
         results = []
         for r in rows:
             received_at = r.get("received_at")
-            results.append({
-                "subject": r.get("subject"),
-                "sender": r.get("sender"),
-                "sender_display": r.get("sender_display"),
-                "received_at": received_at.isoformat() if isinstance(received_at, datetime) else str(received_at) if received_at else None,
-                "mailbox": "db",
-                "web_link": None,
-                "category": r.get("category"),
-                "importance": r.get("importance"),
-            })
+            results.append(
+                {
+                    "subject": r.get("subject"),
+                    "sender": r.get("sender"),
+                    "sender_display": r.get("sender_display"),
+                    "received_at": received_at.isoformat()
+                    if isinstance(received_at, datetime)
+                    else str(received_at)
+                    if received_at
+                    else None,
+                    "mailbox": "db",
+                    "web_link": None,
+                    "category": r.get("category"),
+                    "importance": r.get("importance"),
+                }
+            )
         return json.dumps({"results": results}), 200, {"Content-Type": "application/json"}
 
     # Graph mode
@@ -145,7 +151,11 @@ def search(request):
     client = GraphEmailClient()
     if not client.authenticate_headless():
         logger.error("search: Graph authentication failed")
-        return json.dumps({"error": "authentication failed"}), 503, {"Content-Type": "application/json"}
+        return (
+            json.dumps({"error": "authentication failed"}),
+            503,
+            {"Content-Type": "application/json"},
+        )
 
     if "mailboxes" in body:
         mailboxes = body["mailboxes"]
@@ -178,23 +188,36 @@ def search(request):
             seen.add(key)
             unique.append((email, source))
 
-    unique.sort(key=lambda item: item[0].received_datetime if isinstance(item[0].received_datetime, datetime) else datetime.min.replace(tzinfo=timezone.utc), reverse=True)
+    unique.sort(
+        key=lambda item: (
+            item[0].received_datetime
+            if isinstance(item[0].received_datetime, datetime)
+            else datetime.min.replace(tzinfo=timezone.utc)
+        ),
+        reverse=True,
+    )
     unique = unique[:limit]
 
     results = []
     for email, source in unique:
         received = email.received_datetime
-        results.append({
-            "subject": email.subject,
-            "sender": email.from_email,
-            "sender_display": email.from_name,
-            "received_at": received.isoformat() if isinstance(received, datetime) else str(received) if received else None,
-            "preview": email.body_preview,
-            "mailbox": source,
-            "web_link": email.web_link,
-            "category": None,
-            "importance": None,
-        })
+        results.append(
+            {
+                "subject": email.subject,
+                "sender": email.from_email,
+                "sender_display": email.from_name,
+                "received_at": received.isoformat()
+                if isinstance(received, datetime)
+                else str(received)
+                if received
+                else None,
+                "preview": email.body_preview,
+                "mailbox": source,
+                "web_link": email.web_link,
+                "category": None,
+                "importance": None,
+            }
+        )
 
     return json.dumps({"results": results}), 200, {"Content-Type": "application/json"}
 

@@ -645,7 +645,9 @@ class GraphEmailClient:
             return [Email(e) for e in response.json().get("value", [])]
         except requests.exceptions.RequestException as e:
             detail = e.response.text[:500] if e.response is not None else ""
-            logger.error("search_emails failed for mailbox=%s query=%r: %s %s", mailbox, query, e, detail)
+            logger.error(
+                "search_emails failed for mailbox=%s query=%r: %s %s", mailbox, query, e, detail
+            )
             return []
 
     def get_member_groups(self) -> List[Dict]:
@@ -666,11 +668,13 @@ class GraphEmailClient:
                 data = response.json()
                 for item in data.get("value", []):
                     if "Unified" in item.get("groupTypes", []):
-                        groups.append({
-                            "id": item["id"],
-                            "display_name": item.get("displayName", ""),
-                            "mail": item.get("mail", ""),
-                        })
+                        groups.append(
+                            {
+                                "id": item["id"],
+                                "display_name": item.get("displayName", ""),
+                                "mail": item.get("mail", ""),
+                            }
+                        )
                 endpoint = data.get("@odata.nextLink")
                 params = None
         except requests.exceptions.RequestException as e:
@@ -699,7 +703,10 @@ class GraphEmailClient:
                 threads_resp = requests.get(
                     f"{self.graph_endpoint}/groups/{group_id}/conversations/{convo['id']}/threads",
                     headers=self.get_headers(),
-                    params={"$select": "id,topic,sender,preview,lastDeliveredDateTime", "$top": "1"},
+                    params={
+                        "$select": "id,topic,sender,preview,lastDeliveredDateTime",
+                        "$top": "1",
+                    },
                 )
                 threads_resp.raise_for_status()
                 threads = threads_resp.json().get("value", [])
@@ -719,7 +726,9 @@ class GraphEmailClient:
                 results.append(Email(synthetic))
         except requests.exceptions.RequestException as e:
             detail = e.response.text[:500] if e.response is not None else ""
-            logger.error("search_group_conversations failed for group=%s: %s %s", group_id, e, detail)
+            logger.error(
+                "search_group_conversations failed for group=%s: %s %s", group_id, e, detail
+            )
         return results
 
     def move_message_to_action_folder(
