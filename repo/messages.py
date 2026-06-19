@@ -43,3 +43,36 @@ def get(conn: psycopg.Connection, message_id: str) -> Optional[dict]:
         "SELECT * FROM messages WHERE id = %s",
         (message_id,),
     ).fetchone()
+
+
+def search_messages(conn: psycopg.Connection, query: str, limit: int = 25) -> list[dict]:
+    """Full-text search on stored messages, returning latest classification per result."""
+    pattern = f"%{query}%"
+    rows = conn.execute(
+        """
+        SELECT
+            m.id,
+            m.subject,
+            m.sender,
+            m.sender_display,
+            m.received_at,
+            c.category,
+            c.importance
+        FROM messages m
+        LEFT JOIN LATERAL (
+            SELECT category, importance
+            FROM classifications
+            WHERE message_id = m.id
+            ORDER BY created_at DESC
+            LIMIT 1
+        ) c ON true
+        WHERE
+            m.subject        ILIKE %s
+            OR m.sender_display ILIKE %s
+            OR m.body           ILIKE %s
+        ORDER BY m.received_at DESC
+        LIMIT %s
+        """,
+        (pattern, pattern, pattern, limit),
+    ).fetchall()
+    return [dict(r) for r in rows]

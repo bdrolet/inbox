@@ -29,8 +29,10 @@ class GraphEmailClient:
         self.scopes = os.getenv(
             "SCOPES",
             "https://graph.microsoft.com/Mail.Read "
+            "https://graph.microsoft.com/Mail.Read.Shared "
             "https://graph.microsoft.com/User.Read "
-            "https://graph.microsoft.com/Calendars.ReadWrite",
+            "https://graph.microsoft.com/Calendars.ReadWrite "
+            "https://graph.microsoft.com/Group.Read.All",
         ).split()
 
         # Validate configuration
@@ -618,6 +620,116 @@ class GraphEmailClient:
         except requests.exceptions.RequestException as e:
             logger.error("tentatively_accept_event failed for iCalUID=%s: %s", ical_uid, e)
             return False
+
+    def search_emails(self, query: str, mailbox: str = "me", limit: int = 25) -> List[Email]:
+        """Search a mailbox using Graph API KQL $search.
+
+        Args:
+            query: KQL query string — plain keywords or 'subject:word', 'from:addr', etc.
+            mailbox: 'me' for primary mailbox or an email address for a shared mailbox.
+            limit: Maximum number of results to return.
+        """
+        if mailbox == "me":
+            endpoint = f"{self.graph_endpoint}/me/messages"
+        else:
+            endpoint = f"{self.graph_endpoint}/users/{mailbox}/messages"
+
+        params = {
+            "$search": f'"{query}"',
+            "$top": str(limit),
+            "$select": "id,subject,from,toRecipients,receivedDateTime,bodyPreview,webLink",
+        }
+        try:
+            response = requests.get(endpoint, headers=self.get_headers(), params=params)
+            response.raise_for_status()
+            return [Email(e) for e in response.json().get("value", [])]
+        except requests.exceptions.RequestException as e:
+            detail = e.response.text[:500] if e.response is not None else ""
+            logger.error(
+                "search_emails failed for mailbox=%s query=%r: %s %s", mailbox, query, e, detail
+            )
+            return []
+
+    def get_member_groups(self) -> List[Dict]:
+        """Return M365 Unified groups the authenticated user belongs to.
+
+        Returns list of dicts with 'id', 'display_name', 'mail'.
+        """
+        endpoint = f"{self.graph_endpoint}/me/memberOf"
+        params: Optional[Dict[str, str]] = {
+            "$select": "id,displayName,mail,groupTypes",
+            "$top": "100",
+        }
+        groups = []
+        try:
+            while endpoint:
+                response = requests.get(endpoint, headers=self.get_headers(), params=params)
+                response.raise_for_status()
+                data = response.json()
+                for item in data.get("value", []):
+                    if "Unified" in item.get("groupTypes", []):
+                        groups.append(
+                            {
+                                "id": item["id"],
+                                "display_name": item.get("displayName", ""),
+                                "mail": item.get("mail", ""),
+                            }
+                        )
+                endpoint = data.get("@odata.nextLink")
+                params = None
+        except requests.exceptions.RequestException as e:
+            detail = e.response.text[:500] if e.response is not None else ""
+            logger.error("get_member_groups failed: %s %s", e, detail)
+        return groups
+
+    def search_group_conversations(self, group_id: str, query: str, limit: int = 25) -> List[Email]:
+        """Search a M365 group's conversations using Graph API $search.
+
+        Returns results normalized into Email objects. Subject is taken from the
+        conversation thread; sender and preview from the most recent post.
+        """
+        endpoint = f"{self.graph_endpoint}/groups/{group_id}/conversations"
+        params = {
+            "$search": f'"{query}"',
+            "$top": str(limit),
+            "$select": "id,topic,hasAttachments,lastDeliveredDateTime",
+        }
+        results = []
+        try:
+            response = requests.get(endpoint, headers=self.get_headers(), params=params)
+            response.raise_for_status()
+            for convo in response.json().get("value", []):
+                # Fetch threads to get sender + preview from latest post
+                threads_resp = requests.get(
+                    f"{self.graph_endpoint}/groups/{group_id}/conversations/{convo['id']}/threads",
+                    headers=self.get_headers(),
+                    params={
+                        "$select": "id,topic,sender,preview,lastDeliveredDateTime",
+                        "$top": "1",
+                    },
+                )
+                threads_resp.raise_for_status()
+                threads = threads_resp.json().get("value", [])
+                if not threads:
+                    continue
+                thread = threads[0]
+                # Build a pseudo-Email from the conversation/thread fields
+                synthetic = {
+                    "id": convo["id"],
+                    "subject": convo.get("topic", ""),
+                    "from": thread.get("sender") or {},
+                    "toRecipients": [],
+                    "receivedDateTime": convo.get("lastDeliveredDateTime"),
+                    "bodyPreview": thread.get("preview", ""),
+                    "webLink": None,
+                }
+                results.append(Email(synthetic))
+        except requests.exceptions.RequestException as e:
+            detail = e.response.text[:500] if e.response is not None else ""
+            logger.error(
+                "search_group_conversations failed for group=%s: %s %s", group_id, e, detail
+            )
+        return results
 
     def move_message_to_action_folder(
         self, message_id: str, folder_display_name: str

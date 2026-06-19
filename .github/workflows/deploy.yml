@@ -60,4 +60,6 @@ jobs:
           TF_VAR_google_calendar_client_id: ${{ secrets.TF_VAR_GOOGLE_CALENDAR_CLIENT_ID }}
           TF_VAR_google_calendar_client_secret: ${{ secrets.TF_VAR_GOOGLE_CALENDAR_CLIENT_SECRET }}
           TF_VAR_google_calendar_refresh_token: ${{ secrets.TF_VAR_GOOGLE_CALENDAR_REFRESH_TOKEN }}
+          TF_VAR_search_token: ${{ secrets.TF_VAR_SEARCH_TOKEN }}
+          TF_VAR_shared_mailboxes: ${{ vars.SHARED_MAILBOXES }}
         run: terraform apply -auto-approve

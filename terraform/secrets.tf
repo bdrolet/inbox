@@ -15,6 +15,7 @@ locals {
     "google-calendar-client-secret"   = var.google_calendar_client_secret
     "google-calendar-refresh-token"   = var.google_calendar_refresh_token
     "hf-token"                        = var.hf_token
+    "search-token"                    = var.search_token
   }
 
   # msal-token-cache is managed separately so CI can't overwrite the live token

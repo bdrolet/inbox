@@ -136,3 +136,15 @@ variable "google_calendar_refresh_token" {
   sensitive   = true
   default     = ""
 }
+
+variable "search_token" {
+  description = "Bearer token callers must include to authenticate search requests. Generate with: openssl rand -hex 32"
+  type        = string
+  sensitive   = true
+}
+
+variable "shared_mailboxes" {
+  description = "Comma-separated shared mailbox email addresses the search CF searches by default (e.g. 'inbox@co.com,support@co.com')"
+  type        = string
+  default     = ""
+}
