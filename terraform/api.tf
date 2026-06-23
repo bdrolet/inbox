@@ -142,6 +142,22 @@ resource "google_artifact_registry_repository_iam_member" "search_cf_ar_reader" 
   member     = "serviceAccount:${google_service_account.search_cf.email}"
 }
 
+# Allow the GitHub Actions deployer SA to push images and redeploy the Cloud Run service
+resource "google_artifact_registry_repository_iam_member" "deployer_ar_writer" {
+  repository = google_artifact_registry_repository.inbox.name
+  location   = var.region
+  role       = "roles/artifactregistry.writer"
+  member     = "serviceAccount:${var.deployer_sa}"
+}
+
+resource "google_cloud_run_v2_service_iam_member" "deployer_run_developer" {
+  project  = var.project_id
+  location = var.region
+  name     = google_cloud_run_v2_service.api.name
+  role     = "roles/run.developer"
+  member   = "serviceAccount:${var.deployer_sa}"
+}
+
 output "search_url" {
   description = "inbox-api Cloud Run service URL"
   value       = google_cloud_run_v2_service.api.uri

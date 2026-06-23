@@ -148,3 +148,8 @@ variable "shared_mailboxes" {
   type        = string
   default     = ""
 }
+
+variable "deployer_sa" {
+  description = "Service account email used by GitHub Actions to deploy (GCP_DEPLOYER_SA secret). Granted AR writer + Cloud Run developer on inbox-api."
+  type        = string
+}

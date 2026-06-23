@@ -1,4 +1,4 @@
-name: Deploy
+name: Deploy Functions
 
 on:
   workflow_dispatch:
@@ -62,4 +62,5 @@ jobs:
           TF_VAR_google_calendar_refresh_token: ${{ secrets.TF_VAR_GOOGLE_CALENDAR_REFRESH_TOKEN }}
           TF_VAR_search_token: ${{ secrets.TF_VAR_SEARCH_TOKEN }}
           TF_VAR_shared_mailboxes: ${{ vars.SHARED_MAILBOXES }}
+          TF_VAR_deployer_sa: ${{ secrets.GCP_DEPLOYER_SA }}
         run: terraform apply -auto-approve

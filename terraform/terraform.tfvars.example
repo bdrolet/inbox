@@ -28,3 +28,6 @@ google_calendar_refresh_token   = ""
 search_token     = "..."
 # Comma-separated shared mailbox emails to search by default (leave empty if none)
 shared_mailboxes = ""
+
+# GitHub Actions deployer service account (GCP_DEPLOYER_SA secret)
+deployer_sa = "inbox-deployer@bens-project-462804.iam.gserviceaccount.com"
