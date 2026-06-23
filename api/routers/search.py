@@ -106,7 +106,11 @@ def search(body: SearchRequest, _: None = Depends(_verify_token)) -> SearchRespo
     unique: list[tuple] = []
     for email, source in collected:
         received = email.received_datetime
-        bucket = received.replace(second=0, microsecond=0).isoformat() if isinstance(received, datetime) else str(received)
+        bucket = (
+            received.replace(second=0, microsecond=0).isoformat()
+            if isinstance(received, datetime)
+            else str(received)
+        )
         key = (email.subject, email.from_email, bucket)
         if key not in seen:
             seen.add(key)
