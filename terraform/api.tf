@@ -65,22 +65,6 @@ resource "google_cloud_run_v2_service" "api" {
         name  = "SHARED_MAILBOXES"
         value = var.shared_mailboxes
       }
-      # Delegated Graph scopes. Outbound mail (drafts/send for primary, aliases,
-      # groups, and shared mailboxes) needs Mail.ReadWrite, Mail.Send and their
-      # .Shared variants. These must also be admin-consented on the app
-      # registration and present in the re-seeded msal-token-cache secret.
-      env {
-        name = "SCOPES"
-        value = join(" ", [
-          "https://graph.microsoft.com/Mail.Read",
-          "https://graph.microsoft.com/Mail.ReadWrite",
-          "https://graph.microsoft.com/Mail.ReadWrite.Shared",
-          "https://graph.microsoft.com/Mail.Send",
-          "https://graph.microsoft.com/Mail.Send.Shared",
-          "https://graph.microsoft.com/User.Read",
-          "https://graph.microsoft.com/Calendars.ReadWrite",
-        ])
-      }
       env {
         name = "SEARCH_TOKEN"
         value_source {
