@@ -24,6 +24,7 @@ override.tf.json
 # Secrets / tokens
 .env
 .env.*
+!.env.example
 *token*.json
 client_secret*.json
 google_*_token.json

@@ -3,6 +3,7 @@ Microsoft Graph API Email Client
 Handles authentication and email retrieval from Outlook/Office 365
 """
 
+import base64
 import logging
 import os
 from datetime import datetime
@@ -533,6 +534,185 @@ class GraphEmailClient:
         )
         response.raise_for_status()
         logger.info("Sent email to %s: %s", to, subject)
+
+    # ------------------------------------------------------------------ #
+    # Outbound write operations (draft / attachment / send)
+    # ------------------------------------------------------------------ #
+    def _mailbox_base(self, from_address: str | None, from_shared: bool) -> str:
+        """Return the Graph base path for an outbound operation.
+
+        Shared mailbox -> /users/{addr} so the draft lives in that mailbox's Drafts.
+        Otherwise -> /me (primary mailbox); aliases/groups are stamped via the
+        message-level `from` instead of path-targeting.
+        """
+        if from_shared and from_address:
+            return f"/users/{from_address}"
+        return "/me"
+
+    def _build_message(
+        self,
+        *,
+        to: list[str],
+        subject: str,
+        body: str,
+        cc: list[str] | None = None,
+        bcc: list[str] | None = None,
+        body_type: str = "Text",
+        from_address: str | None = None,
+        from_shared: bool = False,
+    ) -> dict:
+        """Assemble a Graph `message` resource from outbound fields.
+
+        A `from` is set only for alias/group sends (from_address set, not shared);
+        shared-mailbox sends path-target /users/{addr}, so no `from` is needed.
+        """
+        message: dict = {
+            "subject": subject,
+            "body": {"contentType": body_type, "content": body},
+            "toRecipients": [{"emailAddress": {"address": a}} for a in to],
+        }
+        if cc:
+            message["ccRecipients"] = [{"emailAddress": {"address": a}} for a in cc]
+        if bcc:
+            message["bccRecipients"] = [{"emailAddress": {"address": a}} for a in bcc]
+        if from_address and not from_shared:
+            message["from"] = {"emailAddress": {"address": from_address}}
+        return message
+
+    def create_draft(
+        self,
+        *,
+        to: list[str],
+        subject: str,
+        body: str,
+        cc: list[str] | None = None,
+        bcc: list[str] | None = None,
+        body_type: str = "Text",
+        from_address: str | None = None,
+        from_shared: bool = False,
+    ) -> dict:
+        """Create a draft message saved to Drafts (not sent). Requires Mail.ReadWrite.
+
+        Returns the created Graph message dict (includes `id` and `webLink`).
+        """
+        base = self._mailbox_base(from_address, from_shared)
+        message = self._build_message(
+            to=to,
+            subject=subject,
+            body=body,
+            cc=cc,
+            bcc=bcc,
+            body_type=body_type,
+            from_address=from_address,
+            from_shared=from_shared,
+        )
+        response = requests.post(
+            f"{self.graph_endpoint}{base}/messages",
+            headers=self.get_headers(),
+            json=message,
+        )
+        response.raise_for_status()
+        created = response.json()
+        logger.info("Created draft %s (base=%s)", created.get("id"), base)
+        return created
+
+    def add_attachment(
+        self,
+        message_id: str,
+        name: str,
+        content_bytes_b64: str,
+        content_type: str | None = None,
+        *,
+        from_address: str | None = None,
+        from_shared: bool = False,
+        is_inline: bool = False,
+    ) -> dict:
+        """Add a small (<3 MB) file attachment to a draft. Requires Mail.ReadWrite.
+
+        content_bytes_b64 is the base64-encoded file content, as Graph expects.
+        Files >= 3 MB need the chunked upload-session path, which is not yet supported.
+        """
+        try:
+            decoded_size = len(base64.b64decode(content_bytes_b64, validate=True))
+        except Exception as e:
+            raise ValueError(f"content_bytes is not valid base64: {e}") from e
+        if decoded_size >= 3 * 1024 * 1024:
+            raise ValueError(
+                f"attachment {name!r} is {decoded_size} bytes; files >= 3 MB require the "
+                "large-file upload path (createUploadSession), not yet supported"
+            )
+
+        base = self._mailbox_base(from_address, from_shared)
+        payload: dict = {
+            "@odata.type": "#microsoft.graph.fileAttachment",
+            "name": name,
+            "contentBytes": content_bytes_b64,
+            "isInline": is_inline,
+        }
+        if content_type:
+            payload["contentType"] = content_type
+        response = requests.post(
+            f"{self.graph_endpoint}{base}/messages/{message_id}/attachments",
+            headers=self.get_headers(),
+            json=payload,
+        )
+        response.raise_for_status()
+        created = response.json()
+        logger.info("Added attachment %r to message %s", name, message_id)
+        return created
+
+    def send_draft(
+        self,
+        message_id: str,
+        *,
+        from_address: str | None = None,
+        from_shared: bool = False,
+    ) -> None:
+        """Send an existing draft by id. Requires Mail.Send."""
+        base = self._mailbox_base(from_address, from_shared)
+        response = requests.post(
+            f"{self.graph_endpoint}{base}/messages/{message_id}/send",
+            headers=self.get_headers(),
+        )
+        response.raise_for_status()
+        logger.info("Sent draft %s (base=%s)", message_id, base)
+
+    def send_message(
+        self,
+        *,
+        to: list[str],
+        subject: str,
+        body: str,
+        cc: list[str] | None = None,
+        bcc: list[str] | None = None,
+        body_type: str = "Text",
+        from_address: str | None = None,
+        from_shared: bool = False,
+        save_to_sent: bool = True,
+    ) -> None:
+        """Compose and send a message in one shot via sendMail. Requires Mail.Send.
+
+        Supports cc/bcc, HTML bodies, and alias/group/shared `from` routing, unlike
+        the simpler legacy send_mail().
+        """
+        base = self._mailbox_base(from_address, from_shared)
+        message = self._build_message(
+            to=to,
+            subject=subject,
+            body=body,
+            cc=cc,
+            bcc=bcc,
+            body_type=body_type,
+            from_address=from_address,
+            from_shared=from_shared,
+        )
+        response = requests.post(
+            f"{self.graph_endpoint}{base}/sendMail",
+            headers=self.get_headers(),
+            json={"message": message, "saveToSentItems": save_to_sent},
+        )
+        response.raise_for_status()
+        logger.info("Sent message to %s (base=%s)", to, base)
 
     def get_attachments(self, message_id: str) -> list[dict]:
         """GET /me/messages/{id}/attachments — returns raw attachment dicts."""
