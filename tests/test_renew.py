@@ -100,3 +100,28 @@ def test_non_404_error_does_not_register(monkeypatch):
 
     with pytest.raises(RuntimeError):
         renew_main._renew_or_register("sub-123", "tok")
+
+
+def test_register_reuses_existing_matching_subscription(monkeypatch):
+    existing_sub = {
+        "id": "sub-existing",
+        "notificationUrl": "https://webhook.example.com",
+        "resource": "me/mailFolders/inbox/messages",
+    }
+    monkeypatch.setenv("WEBHOOK_URL", "https://webhook.example.com")
+    monkeypatch.setattr(renew_main, "_list_subscriptions", lambda tok: [existing_sub])
+    monkeypatch.setattr(renew_main, "_create_subscription", _fail)
+
+    result = renew_main._register_subscription("tok")
+
+    assert result["id"] == "sub-existing"
+
+
+def test_register_creates_when_none_match(monkeypatch):
+    monkeypatch.setenv("WEBHOOK_URL", "https://webhook.example.com")
+    monkeypatch.setattr(renew_main, "_list_subscriptions", lambda tok: [])
+    monkeypatch.setattr(renew_main, "_create_subscription", lambda tok: {"id": "sub-created"})
+
+    result = renew_main._register_subscription("tok")
+
+    assert result["id"] == "sub-created"

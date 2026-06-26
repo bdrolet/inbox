@@ -21,8 +21,8 @@ locals {
 
   # Secrets whose live value is updated at runtime (by the renew/process CFs) and
   # must not be overwritten by CI / Terraform after their initial seed.
-  self_managed_secrets = ["msal-token-cache", "graph-subscription-id"]
-  secrets_without_msal = { for k, v in local.secrets : k => v if !contains(local.self_managed_secrets, k) }
+  self_managed_secrets   = ["msal-token-cache", "graph-subscription-id"]
+  auto_versioned_secrets = { for k, v in local.secrets : k => v if !contains(local.self_managed_secrets, k) }
 }
 
 resource "google_secret_manager_secret" "secrets" {
@@ -37,7 +37,7 @@ resource "google_secret_manager_secret" "secrets" {
 }
 
 resource "google_secret_manager_secret_version" "secrets" {
-  for_each    = local.secrets_without_msal
+  for_each    = local.auto_versioned_secrets
   secret      = google_secret_manager_secret.secrets[each.key].id
   secret_data = each.value
 }

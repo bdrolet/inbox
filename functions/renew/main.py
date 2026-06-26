@@ -109,7 +109,18 @@ def _patch_subscription(subscription_id: str, token: str) -> requests.Response:
     )
 
 
-def _register_subscription(token: str) -> dict:
+def _list_subscriptions(token: str) -> list:
+    resp = requests.get(
+        "https://graph.microsoft.com/v1.0/subscriptions",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    if not resp.ok:
+        logger.error("Graph GET /subscriptions returned %d: %s", resp.status_code, resp.text)
+        resp.raise_for_status()
+    return resp.json().get("value", [])
+
+
+def _create_subscription(token: str) -> dict:
     resp = requests.post(
         "https://graph.microsoft.com/v1.0/subscriptions",
         json={
@@ -125,6 +136,19 @@ def _register_subscription(token: str) -> dict:
         logger.error("Graph POST /subscriptions returned %d: %s", resp.status_code, resp.text)
         resp.raise_for_status()
     return resp.json()
+
+
+def _register_subscription(token: str) -> dict:
+    """Idempotent: reuse an existing subscription for our webhook+resource if one
+    exists (e.g. a prior run registered but failed to persist the ID), else create
+    a new one. Prevents orphaned duplicates from accumulating on partial failures."""
+    webhook_url = os.environ["WEBHOOK_URL"]
+    resource = "me/mailFolders/inbox/messages"
+    for sub in _list_subscriptions(token):
+        if sub.get("notificationUrl") == webhook_url and sub.get("resource") == resource:
+            logger.info("Reusing existing subscription %s for %s", sub["id"], webhook_url)
+            return sub
+    return _create_subscription(token)
 
 
 def _renew_or_register(subscription_id: str, token: str) -> dict:
@@ -149,8 +173,9 @@ def _renew_or_register(subscription_id: str, token: str) -> dict:
         logger.error("Graph PATCH %s returned %d: %s", subscription_id, resp.status_code, resp.text)
         resp.raise_for_status()
 
-    logger.info("Renewed subscription %s -- new expiry: %s", subscription_id, resp.json().get("expirationDateTime"))
-    return resp.json()
+    body = resp.json()
+    logger.info("Renewed subscription %s -- new expiry: %s", subscription_id, body.get("expirationDateTime"))
+    return body
 
 
 @functions_framework.http
