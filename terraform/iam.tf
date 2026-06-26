@@ -161,6 +161,18 @@ resource "google_secret_manager_secret_iam_member" "renew_cf_msal_version_manage
   member    = "serviceAccount:${google_service_account.renew_cf.email}"
 }
 
+resource "google_secret_manager_secret_iam_member" "renew_cf_subscription_accessor" {
+  secret_id = google_secret_manager_secret.secrets["graph-subscription-id"].secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.renew_cf.email}"
+}
+
+resource "google_secret_manager_secret_iam_member" "renew_cf_subscription_version_manager" {
+  secret_id = google_secret_manager_secret.secrets["graph-subscription-id"].secret_id
+  role      = "roles/secretmanager.secretVersionManager"
+  member    = "serviceAccount:${google_service_account.renew_cf.email}"
+}
+
 resource "google_secret_manager_secret_iam_member" "renew_cf_azure" {
   for_each  = toset(["client-id", "client-secret", "tenant-id"])
   secret_id = google_secret_manager_secret.secrets[each.key].secret_id

@@ -1,25 +1,28 @@
 locals {
   secrets = {
-    "client-id"                       = var.client_id
-    "client-secret"                   = var.client_secret
-    "tenant-id"                       = var.tenant_id
-    "anthropic-api-key"               = var.anthropic_api_key
-    "msal-token-cache"                = var.msal_token_cache
-    "inbox-db-password"               = var.db_password
-    "webhook-label-token"             = var.webhook_label_token
-    "grafana-otlp-endpoint"           = var.grafana_otlp_endpoint
-    "grafana-otlp-token"              = var.grafana_otlp_token
-    "asana-api-key"                   = var.asana_api_key
-    "hubspot-token"                   = var.hubspot_token
-    "google-calendar-client-id"       = var.google_calendar_client_id
-    "google-calendar-client-secret"   = var.google_calendar_client_secret
-    "google-calendar-refresh-token"   = var.google_calendar_refresh_token
-    "hf-token"                        = var.hf_token
-    "search-token"                    = var.search_token
+    "client-id"                     = var.client_id
+    "client-secret"                 = var.client_secret
+    "tenant-id"                     = var.tenant_id
+    "anthropic-api-key"             = var.anthropic_api_key
+    "msal-token-cache"              = var.msal_token_cache
+    "inbox-db-password"             = var.db_password
+    "webhook-label-token"           = var.webhook_label_token
+    "grafana-otlp-endpoint"         = var.grafana_otlp_endpoint
+    "grafana-otlp-token"            = var.grafana_otlp_token
+    "asana-api-key"                 = var.asana_api_key
+    "hubspot-token"                 = var.hubspot_token
+    "google-calendar-client-id"     = var.google_calendar_client_id
+    "google-calendar-client-secret" = var.google_calendar_client_secret
+    "google-calendar-refresh-token" = var.google_calendar_refresh_token
+    "hf-token"                      = var.hf_token
+    "search-token"                  = var.search_token
+    "graph-subscription-id"         = var.graph_subscription_id
   }
 
-  # msal-token-cache is managed separately so CI can't overwrite the live token
-  secrets_without_msal = { for k, v in local.secrets : k => v if k != "msal-token-cache" }
+  # Secrets whose live value is updated at runtime (by the renew/process CFs) and
+  # must not be overwritten by CI / Terraform after their initial seed.
+  self_managed_secrets   = ["msal-token-cache", "graph-subscription-id"]
+  auto_versioned_secrets = { for k, v in local.secrets : k => v if !contains(local.self_managed_secrets, k) }
 }
 
 resource "google_secret_manager_secret" "secrets" {
@@ -34,7 +37,7 @@ resource "google_secret_manager_secret" "secrets" {
 }
 
 resource "google_secret_manager_secret_version" "secrets" {
-  for_each    = local.secrets_without_msal
+  for_each    = local.auto_versioned_secrets
   secret      = google_secret_manager_secret.secrets[each.key].id
   secret_data = each.value
 }
@@ -45,6 +48,17 @@ resource "google_secret_manager_secret_version" "secrets" {
 resource "google_secret_manager_secret_version" "msal_token_cache" {
   secret      = google_secret_manager_secret.secrets["msal-token-cache"].id
   secret_data = var.msal_token_cache
+
+  lifecycle {
+    ignore_changes = [secret_data]
+  }
+}
+
+# Separate resource so lifecycle.ignore_changes prevents CI/Terraform from
+# overwriting the live subscription ID the renew CF writes on self-heal.
+resource "google_secret_manager_secret_version" "graph_subscription_id" {
+  secret      = google_secret_manager_secret.secrets["graph-subscription-id"].id
+  secret_data = var.graph_subscription_id
 
   lifecycle {
     ignore_changes = [secret_data]

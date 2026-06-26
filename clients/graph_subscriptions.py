@@ -10,7 +10,7 @@ Usage (run once after the webhook Cloud Function is deployed):
     client.authenticate_interactive()  # or authenticate_headless()
 
     result = register(client, "https://<webhook-cf-url>")
-    print(result["id"])   # save this as GRAPH_SUBSCRIPTION_ID env var
+    print(result["id"])   # the renew CF self-heals and stores the live ID in the graph-subscription-id Secret Manager secret
 
 Graph subscriptions expire after ~3 days. The renewal Cloud Function
 (functions/renew/main.py) handles automatic renewal via Cloud Scheduler.
