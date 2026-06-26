@@ -30,6 +30,7 @@ class SearchRequest(BaseModel):
 
 
 class SearchResult(BaseModel):
+    message_id: str | None = None
     subject: str | None = None
     sender: str | None = None
     sender_display: str | None = None
@@ -64,6 +65,7 @@ def search(body: SearchRequest, _: None = Depends(_verify_token)) -> SearchRespo
         return SearchResponse(
             results=[
                 SearchResult(
+                    message_id=str(r["id"]) if r.get("id") is not None else None,
                     subject=r.get("subject"),
                     sender=r.get("sender"),
                     sender_display=r.get("sender_display"),
@@ -129,6 +131,7 @@ def search(body: SearchRequest, _: None = Depends(_verify_token)) -> SearchRespo
     return SearchResponse(
         results=[
             SearchResult(
+                message_id=email.id,
                 subject=email.subject,
                 sender=email.from_email,
                 sender_display=email.from_name,
