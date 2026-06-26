@@ -1,10 +1,15 @@
 """Unit tests for the self-healing renew Cloud Function.
 
-The renew module is a standalone Cloud Function that imports `functions_framework`,
-which isn't a dependency of the main test venv. We stub it in sys.modules before
-importing, then load the module straight from its file path.
+The renew module is a standalone Cloud Function whose third-party imports
+(functions_framework, msal, requests, google-cloud-secret-manager) are not part
+of the CI test environment (which installs only requirements-dev.txt). Each unit
+test monkeypatches the functions that would actually call those libraries, so we
+stub any that aren't installed before loading the module straight from its file
+path. When a real library IS available (e.g. locally) we use it, preserving
+fidelity.
 """
 
+import importlib
 import importlib.util
 import sys
 import types
@@ -12,11 +17,40 @@ from pathlib import Path
 
 import pytest
 
-# Stub functions_framework so the standalone CF module imports without the CF runtime.
-if "functions_framework" not in sys.modules:
-    ff = types.ModuleType("functions_framework")
-    ff.http = lambda fn: fn  # identity decorator
-    sys.modules["functions_framework"] = ff
+
+def _ensure_module(name, **attrs):
+    """Use the real module if importable, else register a stub with `attrs`."""
+    try:
+        importlib.import_module(name)
+    except ImportError:
+        mod = types.ModuleType(name)
+        for key, value in attrs.items():
+            setattr(mod, key, value)
+        sys.modules[name] = mod
+
+
+_ensure_module("functions_framework", http=lambda fn: fn)  # identity decorator
+_ensure_module("msal")
+_ensure_module("requests", Response=type("Response", (), {}))  # used only in a type hint
+
+# google-cloud-secret-manager + api-core: build the package chain only if absent.
+try:
+    from google.api_core import exceptions as _gac_exceptions  # noqa: F401
+    from google.cloud import secretmanager as _gc_secretmanager  # noqa: F401
+except ImportError:
+    _google = sys.modules.setdefault("google", types.ModuleType("google"))
+    _cloud = sys.modules.setdefault("google.cloud", types.ModuleType("google.cloud"))
+    _google.cloud = _cloud
+    _cloud.secretmanager = sys.modules.setdefault(
+        "google.cloud.secretmanager", types.ModuleType("google.cloud.secretmanager")
+    )
+    _api_core = sys.modules.setdefault("google.api_core", types.ModuleType("google.api_core"))
+    _google.api_core = _api_core
+    _exc = sys.modules.setdefault(
+        "google.api_core.exceptions", types.ModuleType("google.api_core.exceptions")
+    )
+    _exc.NotFound = type("NotFound", (Exception,), {})
+    _api_core.exceptions = _exc
 
 _RENEW_PATH = Path(__file__).resolve().parents[1] / "functions" / "renew" / "main.py"
 _spec = importlib.util.spec_from_file_location("renew_main", _RENEW_PATH)
