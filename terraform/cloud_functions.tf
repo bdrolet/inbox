@@ -125,10 +125,10 @@ resource "google_cloudfunctions2_function" "renew" {
     max_instance_count    = 1
     timeout_seconds       = 60
     environment_variables = {
-      GCP_PROJECT_ID = var.project_id
-      # Set GRAPH_SUBSCRIPTION_ID after registering the subscription:
-      #   terraform apply -var="graph_subscription_id=<id>"
-      GRAPH_SUBSCRIPTION_ID = var.graph_subscription_id
+      GCP_PROJECT_ID           = var.project_id
+      WEBHOOK_URL              = google_cloudfunctions2_function.webhook.service_config[0].uri
+      SUBSCRIPTION_SECRET_NAME = "graph-subscription-id"
+      WEBHOOK_CLIENT_STATE     = "inbox-webhook"
     }
     secret_environment_variables {
       key        = "CLIENT_ID"
@@ -204,25 +204,25 @@ resource "google_cloudfunctions2_function" "process" {
   }
 
   service_config {
-    service_account_email          = google_service_account.process_cf.email
-    min_instance_count             = 0
-    max_instance_count             = 3
-    timeout_seconds                = 300
-    available_cpu                  = "1"
-    available_memory               = "2Gi"
+    service_account_email = google_service_account.process_cf.email
+    min_instance_count    = 0
+    max_instance_count    = 3
+    timeout_seconds       = 300
+    available_cpu         = "1"
+    available_memory      = "2Gi"
     environment_variables = {
-      GCP_PROJECT_ID             = var.project_id
-      CLOUD_SQL_CONNECTION_NAME  = google_sql_database_instance.inbox.connection_name
-      POSTGRES_USER              = var.db_user
-      POSTGRES_DB                = "app"
-      MSAL_SECRET_NAME           = "msal-token-cache"
-      NTFY_BASE_URL              = "https://${var.ntfy_domain}"
-      NTFY_TOPIC                 = var.ntfy_topic
-      WEBHOOK_URL                = google_cloudfunctions2_function.webhook.service_config[0].uri
-      ASANA_PROJECT_ID           = var.asana_project_id
-      OTEL_BSP_MAX_QUEUE_SIZE    = "16384"
-      OTEL_BSP_SCHEDULE_DELAY    = "2000"
-      OTEL_BSP_EXPORT_TIMEOUT    = "30000"
+      GCP_PROJECT_ID            = var.project_id
+      CLOUD_SQL_CONNECTION_NAME = google_sql_database_instance.inbox.connection_name
+      POSTGRES_USER             = var.db_user
+      POSTGRES_DB               = "app"
+      MSAL_SECRET_NAME          = "msal-token-cache"
+      NTFY_BASE_URL             = "https://${var.ntfy_domain}"
+      NTFY_TOPIC                = var.ntfy_topic
+      WEBHOOK_URL               = google_cloudfunctions2_function.webhook.service_config[0].uri
+      ASANA_PROJECT_ID          = var.asana_project_id
+      OTEL_BSP_MAX_QUEUE_SIZE   = "16384"
+      OTEL_BSP_SCHEDULE_DELAY   = "2000"
+      OTEL_BSP_EXPORT_TIMEOUT   = "30000"
     }
     secret_environment_variables {
       key        = "POSTGRES_PASSWORD"
