@@ -156,17 +156,22 @@ def _renew_or_register(subscription_id: str, token: str) -> dict:
         logger.warning("No subscription ID on file -- registering a new subscription")
         sub = _register_subscription(token)
         _save_subscription_id(sub["id"])
-        logger.info("Registered subscription %s (expires %s)", sub["id"], sub.get("expirationDateTime"))
+        logger.info(
+            "Registered subscription %s (expires %s)", sub["id"], sub.get("expirationDateTime")
+        )
         return sub
 
     resp = _patch_subscription(subscription_id, token)
     if resp.status_code == 404:
-        logger.warning("Subscription %s not found (404) -- registering a replacement", subscription_id)
+        logger.warning(
+            "Subscription %s not found (404) -- registering a replacement", subscription_id
+        )
         sub = _register_subscription(token)
         _save_subscription_id(sub["id"])
         logger.info(
             "Registered replacement subscription %s (expires %s)",
-            sub["id"], sub.get("expirationDateTime"),
+            sub["id"],
+            sub.get("expirationDateTime"),
         )
         return sub
     if not resp.ok:
@@ -174,7 +179,9 @@ def _renew_or_register(subscription_id: str, token: str) -> dict:
         resp.raise_for_status()
 
     body = resp.json()
-    logger.info("Renewed subscription %s -- new expiry: %s", subscription_id, body.get("expirationDateTime"))
+    logger.info(
+        "Renewed subscription %s -- new expiry: %s", subscription_id, body.get("expirationDateTime")
+    )
     return body
 
 
