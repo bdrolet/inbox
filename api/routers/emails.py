@@ -8,6 +8,8 @@ from fastapi import APIRouter, Depends, HTTPException, Security
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, ConfigDict, Field
 
+import services.fetching as fetching
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/emails")
@@ -28,6 +30,17 @@ class Recipient(BaseModel):
     address: str | None = None
 
 
+class Post(BaseModel):
+    id: str | None = None
+    thread_id: str | None = None  # needed to trace a post's attachments
+    sender_name: str | None = None
+    sender_email: str | None = None
+    body: str | None = None
+    body_type: str | None = None
+    sent_at: datetime | str | None = None
+    has_attachments: bool = False
+
+
 class EmailDetailResponse(BaseModel):
     id: str | None = None
     subject: str | None = None
@@ -41,6 +54,7 @@ class EmailDetailResponse(BaseModel):
     body_type: str | None = None
     has_attachments: bool = False
     web_link: str | None = None
+    posts: list[Post] | None = None  # group conversations only
 
 
 class AttachmentItem(BaseModel):
@@ -50,6 +64,7 @@ class AttachmentItem(BaseModel):
     size: int | None = None
     is_inline: bool = False
     content_bytes: str | None = None
+    post_id: str | None = None  # group conversations only
 
 
 class AttachmentsResponse(BaseModel):
@@ -119,12 +134,17 @@ def _call_graph(fn, *args, **kwargs):
     """Invoke a Graph client write method, mapping failures to HTTPExceptions.
 
     Graph 403 (permission) surfaces as 403 with Graph's detail; other Graph errors
-    as 502; client-side validation errors (e.g. attachment too large) as 400.
+    as 502; client-side validation errors (e.g. attachment too large) as 400;
+    not-found (LookupError) as 404; auth failure (RuntimeError) as 503.
     """
     try:
         return fn(*args, **kwargs)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail="authentication failed") from e
     except requests.exceptions.HTTPError as e:
         resp = e.response
         detail = resp.text[:1000] if resp is not None else str(e)
@@ -144,13 +164,30 @@ def _get_client():
     return client
 
 
+def _post_model(p: dict) -> Post:
+    addr = (p.get("from") or p.get("sender") or {}).get("emailAddress", {})
+    body = p.get("body") or {}
+    return Post(
+        id=p.get("id"),
+        thread_id=p.get("threadId"),
+        sender_name=addr.get("name"),
+        sender_email=addr.get("address"),
+        body=body.get("content"),
+        body_type=body.get("contentType"),
+        sent_at=p.get("receivedDateTime"),
+        has_attachments=p.get("hasAttachments", False),
+    )
+
+
 @router.get("/{message_id}", response_model=EmailDetailResponse)
-def get_email(message_id: str, _: None = Depends(_verify_token)) -> EmailDetailResponse:
-    client = _get_client()
-    email = client.get_email_details(message_id)
-    if email is None:
+def get_email(
+    message_id: str, mailbox: str = "me", _: None = Depends(_verify_token)
+) -> EmailDetailResponse:
+    fetched = _call_graph(fetching.fetch_email, message_id, mailbox=mailbox)
+    if fetched is None:
         raise HTTPException(status_code=404, detail="message not found")
 
+    email = fetched.email
     return EmailDetailResponse(
         id=email.id,
         subject=email.subject,
@@ -164,13 +201,15 @@ def get_email(message_id: str, _: None = Depends(_verify_token)) -> EmailDetailR
         body_type=email.body_type,
         has_attachments=email.has_attachments,
         web_link=email.web_link,
+        posts=[_post_model(p) for p in fetched.posts] if fetched.posts is not None else None,
     )
 
 
 @router.get("/{message_id}/attachments", response_model=AttachmentsResponse)
-def get_attachments(message_id: str, _: None = Depends(_verify_token)) -> AttachmentsResponse:
-    client = _get_client()
-    raw = client.get_attachments(message_id)
+def get_attachments(
+    message_id: str, mailbox: str = "me", _: None = Depends(_verify_token)
+) -> AttachmentsResponse:
+    raw = _call_graph(fetching.fetch_attachments, message_id, mailbox=mailbox)
 
     return AttachmentsResponse(
         attachments=[
@@ -181,6 +220,7 @@ def get_attachments(message_id: str, _: None = Depends(_verify_token)) -> Attach
                 size=a.get("size"),
                 is_inline=a.get("isInline", False),
                 content_bytes=a.get("contentBytes"),
+                post_id=a.get("postId"),
             )
             for a in raw
         ]
