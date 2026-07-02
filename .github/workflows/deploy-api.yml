@@ -6,6 +6,10 @@ on:
     branches: [main]
     paths:
       - 'api/**'
+      - 'clients/**'
+      - 'repo/**'
+      - 'services/**'
+      - 'models/**'
       - 'Dockerfile'
       - 'requirements.txt'
 
