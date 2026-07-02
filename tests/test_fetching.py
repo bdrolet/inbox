@@ -81,6 +81,18 @@ def test_fetch_email_group_by_mail_case_insensitive(client):
     assert fetched.email.web_link is None
 
 
+def test_fetch_email_group_post_from_takes_precedence_over_sender(client):
+    post = _post("p1", "2026-07-01T10:00:00Z")
+    post["sender"] = {"emailAddress": {"name": "Delegate", "address": "delegate@x.com"}}
+    client.conversations[("g1", "c1")] = {
+        "topic": "T",
+        "lastDeliveredDateTime": None,
+        "posts": [post],
+    }
+    fetched = fetch_email("c1", mailbox="group:eng@x.com")
+    assert fetched.email.from_email == "ann@x.com"  # `from` wins over `sender`
+
+
 def test_fetch_email_group_by_id(client):
     client.conversations[("g1", "c1")] = {"topic": "T", "lastDeliveredDateTime": None, "posts": []}
     assert fetch_email("c1", mailbox="group:g1").email.subject == "T"
@@ -106,9 +118,11 @@ def test_fetch_attachments_group_aggregates_with_post_id(client):
         "lastDeliveredDateTime": None,
         "posts": [_post("p1", "2026-07-01T10:00:00Z", has_attachments=True), _post("p2", "2026-07-01T11:00:00Z")],
     }
-    client.post_attachments[("g1", "t1", "p1")] = [{"id": "a1", "name": "f.pdf"}]
+    original = {"id": "a1", "name": "f.pdf"}
+    client.post_attachments[("g1", "t1", "p1")] = [original]
     atts = fetch_attachments("c1", mailbox="group:eng@x.com")
     assert atts == [{"id": "a1", "name": "f.pdf", "postId": "p1"}]
+    assert original == {"id": "a1", "name": "f.pdf"}  # client's dict not mutated
 
 
 def test_fetch_attachments_group_conversation_not_found(client):

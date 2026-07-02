@@ -34,8 +34,10 @@ def _resolve_group_id(client, value: str) -> str:
 def _conversation_to_fetched(conversation_id: str, convo: dict) -> FetchedEmail:
     posts = sorted(convo["posts"], key=lambda p: p.get("receivedDateTime") or "")
     latest = posts[-1] if posts else {}
-    # Same synthetic-Email technique as search_group_conversations: top-level
-    # fields mirror the latest post (parity with search's preview).
+    # Synthetic Email: top-level fields mirror the latest post. Author
+    # precedence is `from` then `sender` — the Email class and Outlook both
+    # treat `from` as the display author, with `sender` the delegate-scenario
+    # fallback.
     synthetic = {
         "id": conversation_id,
         "subject": convo.get("topic", ""),
@@ -81,6 +83,5 @@ def fetch_attachments(message_id: str, mailbox: str = "me") -> list[dict]:
         if not post.get("hasAttachments"):
             continue
         for att in client.get_group_post_attachments(group_id, post["threadId"], post["id"]):
-            att["postId"] = post["id"]
-            attachments.append(att)
+            attachments.append({**att, "postId": post["id"]})
     return attachments
