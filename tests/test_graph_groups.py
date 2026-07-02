@@ -87,3 +87,40 @@ def test_get_group_post_attachments_404_raises_lookup(monkeypatch):
     monkeypatch.setattr(requests, "get", lambda *a, **k: _Resp(status_code=404))
     with pytest.raises(LookupError):
         _client().get_group_post_attachments("g1", "t1", "gone")
+
+
+def test_search_group_conversations_selects_valid_thread_properties(monkeypatch):
+    seen = {}
+
+    def fake_get(url, headers=None, params=None):
+        if url.endswith("/threads"):
+            seen["threads_params"] = params
+            return _Resp(
+                json_data={
+                    "value": [
+                        {
+                            "id": "t1",
+                            "topic": "Lunch",
+                            "preview": "Pizza at noon",
+                            "uniqueSenders": ["Ann"],
+                        }
+                    ]
+                }
+            )
+        seen["search_params"] = params
+        return _Resp(
+            json_data={
+                "value": [
+                    {"id": "c1", "topic": "Lunch", "lastDeliveredDateTime": "2026-07-01T10:00:00Z"}
+                ]
+            }
+        )
+
+    monkeypatch.setattr(requests, "get", fake_get)
+    results = _client().search_group_conversations("g1", "lunch")
+
+    # conversationThread has no `sender` property — Graph 400s if we select it
+    select_fields = seen["threads_params"]["$select"].split(",")
+    assert "sender" not in select_fields
+    assert len(results) == 1
+    assert results[0].from_name == "Ann"
