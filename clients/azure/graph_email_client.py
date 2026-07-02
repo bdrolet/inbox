@@ -896,7 +896,7 @@ class GraphEmailClient:
                     f"{self.graph_endpoint}/groups/{group_id}/conversations/{convo['id']}/threads",
                     headers=self.get_headers(),
                     params={
-                        "$select": "id,topic,sender,preview,lastDeliveredDateTime",
+                        "$select": "id,topic,preview,lastDeliveredDateTime,uniqueSenders",
                         "$top": "1",
                     },
                 )
@@ -905,11 +905,14 @@ class GraphEmailClient:
                 if not threads:
                     continue
                 thread = threads[0]
+                # conversationThread has no sender; uniqueSenders only carries
+                # display names, so the synthetic from has no address
+                unique_senders = thread.get("uniqueSenders") or []
                 # Build a pseudo-Email from the conversation/thread fields
                 synthetic = {
                     "id": convo["id"],
                     "subject": convo.get("topic", ""),
-                    "from": thread.get("sender") or {},
+                    "from": {"emailAddress": {"name": unique_senders[0] if unique_senders else ""}},
                     "toRecipients": [],
                     "receivedDateTime": convo.get("lastDeliveredDateTime"),
                     "bodyPreview": thread.get("preview", ""),
