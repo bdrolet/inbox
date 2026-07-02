@@ -353,7 +353,7 @@ class GraphEmailClient:
             return all_emails
 
     def _read_base(self, mailbox: str) -> str:
-        """Path prefix for mailbox reads: /me or /users/{address} (URL-quoted)."""
+        """Full URL base for mailbox reads: {endpoint}/me or {endpoint}/users/{address} (URL-quoted)."""
         if mailbox == "me":
             return f"{self.graph_endpoint}/me"
         return f"{self.graph_endpoint}/users/{quote(mailbox, safe='@')}"
