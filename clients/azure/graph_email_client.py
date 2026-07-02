@@ -351,36 +351,34 @@ class GraphEmailClient:
                 print(f"Response: {e.response.text}")
             return all_emails
 
-    def get_email_details(self, email_id: str) -> Optional[Email]:
-        """
-        Get detailed information about a specific email
+    def get_email_details(self, email_id: str, mailbox: str = "me") -> Optional[Email]:
+        """Get detailed information about a specific email.
 
         Args:
-            email_id: The ID of the email to retrieve
+            email_id: The ID of the email to retrieve.
+            mailbox: 'me' for the primary mailbox or an email address for a
+                shared mailbox (same convention as search_emails).
 
         Returns:
-            Email object or None if not found
+            Email object, or None if the message does not exist (Graph 404).
+
+        Raises:
+            requests.HTTPError: any Graph error other than 404 (e.g. 403 when
+                the token lacks rights to a shared mailbox).
         """
         if not self.access_token:
             raise ValueError("Not authenticated. Call authenticate() first.")
 
-        try:
-            endpoint = f"{self.graph_endpoint}/me/messages/{email_id}"
-
-            # Get full email details including body
-            params = {
-                "$select": "id,subject,from,toRecipients,ccRecipients,bccRecipients,receivedDateTime,sentDateTime,body,bodyPreview,isRead,hasAttachments,attachments,webLink"
-            }
-
-            response = requests.get(endpoint, headers=self.get_headers(), params=params)
-            response.raise_for_status()
-
-            email_data = response.json()
-            return Email(email_data)
-
-        except requests.exceptions.RequestException as e:
-            print(f"Error retrieving email details: {str(e)}")
+        base = "/me" if mailbox == "me" else f"/users/{mailbox}"
+        endpoint = f"{self.graph_endpoint}{base}/messages/{email_id}"
+        params = {
+            "$select": "id,subject,from,toRecipients,ccRecipients,bccRecipients,receivedDateTime,sentDateTime,body,bodyPreview,isRead,hasAttachments,attachments,webLink"
+        }
+        response = requests.get(endpoint, headers=self.get_headers(), params=params)
+        if response.status_code == 404:
             return None
+        response.raise_for_status()
+        return Email(response.json())
 
     def mark_as_read(self, email_id: str) -> bool:
         """
@@ -714,19 +712,22 @@ class GraphEmailClient:
         response.raise_for_status()
         logger.info("Sent message to %s (base=%s)", to, base)
 
-    def get_attachments(self, message_id: str) -> list[dict]:
-        """GET /me/messages/{id}/attachments — returns raw attachment dicts."""
-        try:
-            response = requests.get(
-                f"{self.graph_endpoint}/me/messages/{message_id}/attachments",
-                headers=self.get_headers(),
-            )
-            response.raise_for_status()
-            return response.json().get("value", [])
-        except requests.exceptions.RequestException as e:
-            detail = e.response.text[:500] if e.response is not None else ""
-            logger.error("get_attachments failed for %s: %s %s", message_id, e, detail)
-            return []
+    def get_attachments(self, message_id: str, mailbox: str = "me") -> list[dict]:
+        """GET {mailbox}/messages/{id}/attachments — returns raw attachment dicts.
+
+        Raises:
+            LookupError: the message does not exist (Graph 404).
+            requests.HTTPError: any other Graph error.
+        """
+        base = "/me" if mailbox == "me" else f"/users/{mailbox}"
+        response = requests.get(
+            f"{self.graph_endpoint}{base}/messages/{message_id}/attachments",
+            headers=self.get_headers(),
+        )
+        if response.status_code == 404:
+            raise LookupError("message not found")
+        response.raise_for_status()
+        return response.json().get("value", [])
 
     def _find_event_id_by_ical_uid(self, ical_uid: str) -> str | None:
         """Return the Graph event id matching iCalUID, or None if not found."""
