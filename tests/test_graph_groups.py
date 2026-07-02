@@ -77,7 +77,9 @@ def test_get_group_post_attachments(monkeypatch):
 
     monkeypatch.setattr(requests, "get", fake_get)
     atts = _client().get_group_post_attachments("g1", "t1", "p1")
-    assert seen["url"] == "https://graph.microsoft.com/v1.0/groups/g1/threads/t1/posts/p1/attachments"
+    assert (
+        seen["url"] == "https://graph.microsoft.com/v1.0/groups/g1/threads/t1/posts/p1/attachments"
+    )
     assert atts == [{"id": "a1", "name": "f.pdf"}]
 
 

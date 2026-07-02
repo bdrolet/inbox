@@ -37,9 +37,7 @@ def _group() -> fetching.FetchedEmail:
             "hasAttachments": False,
         }
     ]
-    return fetching.FetchedEmail(
-        email=Email({"id": "c1", "subject": "Lunch"}), posts=posts
-    )
+    return fetching.FetchedEmail(email=Email({"id": "c1", "subject": "Lunch"}), posts=posts)
 
 
 def test_get_email_defaults_to_me(monkeypatch):

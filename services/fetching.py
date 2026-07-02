@@ -5,6 +5,7 @@ returns ("me", a shared-mailbox address, or "group:{mail-or-id}"), resolves
 group labels to a group ID via the user's memberships, and normalizes group
 conversations into the same Email shape as single messages.
 """
+
 import logging
 from dataclasses import dataclass
 
@@ -62,7 +63,7 @@ def fetch_email(message_id: str, mailbox: str = "me") -> FetchedEmail | None:
     """Fetch one message (primary/shared mailbox) or group conversation."""
     client = get_graph_client()
     if mailbox.startswith(_GROUP_PREFIX):
-        group_id = _resolve_group_id(client, mailbox[len(_GROUP_PREFIX):])
+        group_id = _resolve_group_id(client, mailbox[len(_GROUP_PREFIX) :])
         convo = client.get_group_conversation(group_id, message_id)
         if convo is None:
             return None
@@ -80,7 +81,7 @@ def fetch_attachments(message_id: str, mailbox: str = "me") -> list[dict]:
     if not mailbox.startswith(_GROUP_PREFIX):
         return client.get_attachments(message_id, mailbox=mailbox)
 
-    group_id = _resolve_group_id(client, mailbox[len(_GROUP_PREFIX):])
+    group_id = _resolve_group_id(client, mailbox[len(_GROUP_PREFIX) :])
     convo = client.get_group_conversation(group_id, message_id)
     if convo is None:
         raise LookupError("message not found")

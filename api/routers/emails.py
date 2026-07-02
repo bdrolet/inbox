@@ -41,7 +41,9 @@ class Post(BaseModel):
     """
 
     id: str | None = None
-    thread_id: str | None = None  # needed to trace a post's attachments (see AttachmentItem.post_id)
+    thread_id: str | None = (
+        None  # needed to trace a post's attachments (see AttachmentItem.post_id)
+    )
     sender_name: str | None = None
     sender_email: str | None = None
     body: str | None = None

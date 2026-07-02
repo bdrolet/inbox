@@ -73,7 +73,9 @@ def test_get_attachments_shared_hits_users_path(monkeypatch):
 
     monkeypatch.setattr(requests, "get", fake_get)
     atts = _client().get_attachments("m1", mailbox="team@x.com")
-    assert seen["url"] == "https://graph.microsoft.com/v1.0/users/team@x.com/messages/m1/attachments"
+    assert (
+        seen["url"] == "https://graph.microsoft.com/v1.0/users/team@x.com/messages/m1/attachments"
+    )
     assert atts == [{"id": "a1"}]
 
 

@@ -8,9 +8,9 @@ from services.fetching import FetchedEmail, fetch_attachments, fetch_email
 class FakeClient:
     def __init__(self):
         self.groups = [{"id": "g1", "display_name": "Eng", "mail": "eng@x.com"}]
-        self.emails = {}          # (message_id, mailbox) -> Email-constructor dict
-        self.attachments = {}     # (message_id, mailbox) -> list[dict]
-        self.conversations = {}   # (group_id, conversation_id) -> convo dict
+        self.emails = {}  # (message_id, mailbox) -> Email-constructor dict
+        self.attachments = {}  # (message_id, mailbox) -> list[dict]
+        self.conversations = {}  # (group_id, conversation_id) -> convo dict
         self.post_attachments = {}  # (group_id, thread_id, post_id) -> list[dict]
         self.member_groups_error = None  # optional exception to raise
 
@@ -76,11 +76,14 @@ def test_fetch_email_group_by_mail_case_insensitive(client):
     client.conversations[("g1", "c1")] = {
         "topic": "Lunch",
         "lastDeliveredDateTime": "2026-07-01T12:00:00Z",
-        "posts": [_post("p1", "2026-07-01T10:00:00Z"), _post("p2", "2026-07-01T12:00:00Z", body="latest")],
+        "posts": [
+            _post("p1", "2026-07-01T10:00:00Z"),
+            _post("p2", "2026-07-01T12:00:00Z", body="latest"),
+        ],
     }
     fetched = fetch_email("c1", mailbox="group:ENG@x.com")
     assert fetched.email.subject == "Lunch"
-    assert fetched.email.body_content == "latest"          # mirrors latest post
+    assert fetched.email.body_content == "latest"  # mirrors latest post
     assert [p["id"] for p in fetched.posts] == ["p1", "p2"]  # oldest first
     assert fetched.email.web_link is None
 
@@ -120,7 +123,10 @@ def test_fetch_attachments_group_aggregates_with_post_id(client):
     client.conversations[("g1", "c1")] = {
         "topic": "T",
         "lastDeliveredDateTime": None,
-        "posts": [_post("p1", "2026-07-01T10:00:00Z", has_attachments=True), _post("p2", "2026-07-01T11:00:00Z")],
+        "posts": [
+            _post("p1", "2026-07-01T10:00:00Z", has_attachments=True),
+            _post("p2", "2026-07-01T11:00:00Z"),
+        ],
     }
     original = {"id": "a1", "name": "f.pdf"}
     client.post_attachments[("g1", "t1", "p1")] = [original]
