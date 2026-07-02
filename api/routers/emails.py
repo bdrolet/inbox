@@ -31,8 +31,17 @@ class Recipient(BaseModel):
 
 
 class Post(BaseModel):
+    """One message within an M365 group conversation thread.
+
+    Group "emails" are Graph conversations, not single messages: fetching one
+    returns the whole thread as a list of these, oldest first, in
+    EmailDetailResponse.posts (null for regular mailbox messages, whose body
+    lives in the top-level fields). Mirrors the raw Graph post resource
+    normalized by services/fetching.py.
+    """
+
     id: str | None = None
-    thread_id: str | None = None  # needed to trace a post's attachments
+    thread_id: str | None = None  # needed to trace a post's attachments (see AttachmentItem.post_id)
     sender_name: str | None = None
     sender_email: str | None = None
     body: str | None = None
