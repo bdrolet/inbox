@@ -8,6 +8,7 @@ import logging
 import os
 from datetime import datetime
 from typing import Dict, List, Optional
+from urllib.parse import quote
 
 import msal
 import requests
@@ -351,6 +352,12 @@ class GraphEmailClient:
                 print(f"Response: {e.response.text}")
             return all_emails
 
+    def _read_base(self, mailbox: str) -> str:
+        """Path prefix for mailbox reads: /me or /users/{address} (URL-quoted)."""
+        if mailbox == "me":
+            return f"{self.graph_endpoint}/me"
+        return f"{self.graph_endpoint}/users/{quote(mailbox, safe='@')}"
+
     def get_email_details(self, email_id: str, mailbox: str = "me") -> Optional[Email]:
         """Get detailed information about a specific email.
 
@@ -369,8 +376,7 @@ class GraphEmailClient:
         if not self.access_token:
             raise ValueError("Not authenticated. Call authenticate() first.")
 
-        base = "/me" if mailbox == "me" else f"/users/{mailbox}"
-        endpoint = f"{self.graph_endpoint}{base}/messages/{email_id}"
+        endpoint = f"{self._read_base(mailbox)}/messages/{email_id}"
         params = {
             "$select": "id,subject,from,toRecipients,ccRecipients,bccRecipients,receivedDateTime,sentDateTime,body,bodyPreview,isRead,hasAttachments,attachments,webLink"
         }
@@ -719,9 +725,8 @@ class GraphEmailClient:
             LookupError: the message does not exist (Graph 404).
             requests.HTTPError: any other Graph error.
         """
-        base = "/me" if mailbox == "me" else f"/users/{mailbox}"
         response = requests.get(
-            f"{self.graph_endpoint}{base}/messages/{message_id}/attachments",
+            f"{self._read_base(mailbox)}/messages/{message_id}/attachments",
             headers=self.get_headers(),
         )
         if response.status_code == 404:
@@ -810,10 +815,7 @@ class GraphEmailClient:
             mailbox: 'me' for primary mailbox or an email address for a shared mailbox.
             limit: Maximum number of results to return.
         """
-        if mailbox == "me":
-            endpoint = f"{self.graph_endpoint}/me/messages"
-        else:
-            endpoint = f"{self.graph_endpoint}/users/{mailbox}/messages"
+        endpoint = f"{self._read_base(mailbox)}/messages"
 
         params = {
             "$search": f'"{query}"',
@@ -831,10 +833,17 @@ class GraphEmailClient:
             )
             return []
 
-    def get_member_groups(self) -> List[Dict]:
+    def get_member_groups(self, raise_on_error: bool = False) -> List[Dict]:
         """Return M365 Unified groups the authenticated user belongs to.
 
         Returns list of dicts with 'id', 'display_name', 'mail'.
+
+        Args:
+            raise_on_error: if True, re-raise Graph failures instead of
+                returning a partial/empty list. Callers that need to
+                distinguish "no such group" from "Graph is unreachable"
+                (e.g. group-id resolution) should pass True; best-effort
+                callers (e.g. search) should leave this False.
         """
         endpoint = f"{self.graph_endpoint}/me/memberOf"
         params: Optional[Dict[str, str]] = {
@@ -861,6 +870,8 @@ class GraphEmailClient:
         except requests.exceptions.RequestException as e:
             detail = e.response.text[:500] if e.response is not None else ""
             logger.error("get_member_groups failed: %s %s", e, detail)
+            if raise_on_error:
+                raise
         return groups
 
     def search_group_conversations(self, group_id: str, query: str, limit: int = 25) -> List[Email]:

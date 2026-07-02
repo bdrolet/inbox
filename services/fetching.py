@@ -22,17 +22,23 @@ class FetchedEmail:
     posts: list[dict] | None = None  # group conversations only, oldest first
 
 
+def _post_sort_key(post: dict) -> str:
+    return post.get("receivedDateTime") or ""
+
+
 def _resolve_group_id(client, value: str) -> str:
     """Match a group mail address or ID against the user's groups."""
     needle = value.strip().lower()
-    for group in client.get_member_groups():
+    if not needle:
+        raise LookupError(f"unknown group: {value}")
+    for group in client.get_member_groups(raise_on_error=True):
         if group["id"].lower() == needle or (group.get("mail") or "").lower() == needle:
             return group["id"]
     raise LookupError(f"unknown group: {value}")
 
 
 def _conversation_to_fetched(conversation_id: str, convo: dict) -> FetchedEmail:
-    posts = sorted(convo["posts"], key=lambda p: p.get("receivedDateTime") or "")
+    posts = sorted(convo["posts"], key=_post_sort_key)
     latest = posts[-1] if posts else {}
     # Synthetic Email: top-level fields mirror the latest post. Author
     # precedence is `from` then `sender` — the Email class and Outlook both
@@ -79,7 +85,7 @@ def fetch_attachments(message_id: str, mailbox: str = "me") -> list[dict]:
     if convo is None:
         raise LookupError("message not found")
     attachments: list[dict] = []
-    for post in convo["posts"]:
+    for post in sorted(convo["posts"], key=_post_sort_key):
         if not post.get("hasAttachments"):
             continue
         for att in client.get_group_post_attachments(group_id, post["threadId"], post["id"]):

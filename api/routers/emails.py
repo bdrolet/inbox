@@ -131,7 +131,7 @@ def _from_parts(from_: FromMailbox | None) -> tuple[str | None, bool]:
 
 
 def _call_graph(fn, *args, **kwargs):
-    """Invoke a Graph client write method, mapping failures to HTTPExceptions.
+    """Invoke a Graph-backed operation, mapping failures to HTTPExceptions.
 
     Graph 403 (permission) surfaces as 403 with Graph's detail; other Graph errors
     as 502; client-side validation errors (e.g. attachment too large) as 400;
@@ -141,6 +141,8 @@ def _call_graph(fn, *args, **kwargs):
         return fn(*args, **kwargs)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
+    except (KeyError, IndexError):
+        raise  # server bug, not a not-found — let it 500
     except LookupError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
     except RuntimeError as e:

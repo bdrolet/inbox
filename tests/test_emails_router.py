@@ -115,6 +115,15 @@ def test_get_email_500_maps_to_502(monkeypatch):
     assert client.get("/emails/m1").status_code == 502
 
 
+def test_get_email_keyerror_is_not_swallowed_as_404(monkeypatch):
+    def fake(mid, mailbox="me"):
+        raise KeyError("threadId")
+
+    monkeypatch.setattr(fetching, "fetch_email", fake)
+    with pytest.raises(KeyError):
+        client.get("/emails/m1")
+
+
 def test_get_email_auth_failure_maps_to_503(monkeypatch):
     def fake(mid, mailbox="me"):
         raise RuntimeError("Graph API headless authentication failed")

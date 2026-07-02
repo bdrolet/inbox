@@ -1,4 +1,5 @@
 import pytest
+import requests
 
 import services.fetching as fetching
 from services.fetching import FetchedEmail, fetch_attachments, fetch_email
@@ -11,8 +12,11 @@ class FakeClient:
         self.attachments = {}     # (message_id, mailbox) -> list[dict]
         self.conversations = {}   # (group_id, conversation_id) -> convo dict
         self.post_attachments = {}  # (group_id, thread_id, post_id) -> list[dict]
+        self.member_groups_error = None  # optional exception to raise
 
-    def get_member_groups(self):
+    def get_member_groups(self, raise_on_error=False):
+        if self.member_groups_error is not None and raise_on_error:
+            raise self.member_groups_error
         return self.groups
 
     def get_email_details(self, email_id, mailbox="me"):
@@ -128,3 +132,36 @@ def test_fetch_attachments_group_aggregates_with_post_id(client):
 def test_fetch_attachments_group_conversation_not_found(client):
     with pytest.raises(LookupError):
         fetch_attachments("gone", mailbox="group:eng@x.com")
+
+
+def test_fetch_email_group_resolution_graph_error_propagates(client):
+    resp = requests.Response()
+    resp.status_code = 403
+    client.member_groups_error = requests.exceptions.HTTPError("403", response=resp)
+    with pytest.raises(requests.exceptions.HTTPError):
+        fetch_email("c1", mailbox="group:eng@x.com")
+
+
+def test_fetch_email_empty_group_label_raises(client):
+    with pytest.raises(LookupError, match="unknown group"):
+        fetch_email("c1", mailbox="group:")
+
+
+def test_fetch_email_blank_group_label_raises(client):
+    with pytest.raises(LookupError, match="unknown group"):
+        fetch_email("c1", mailbox="group:  ")
+
+
+def test_fetch_attachments_group_posts_sorted_oldest_first(client):
+    client.conversations[("g1", "c1")] = {
+        "topic": "T",
+        "lastDeliveredDateTime": None,
+        "posts": [
+            _post("p2", "2026-07-01T11:00:00Z", has_attachments=True),
+            _post("p1", "2026-07-01T10:00:00Z", has_attachments=True),
+        ],
+    }
+    client.post_attachments[("g1", "t1", "p1")] = [{"id": "a1"}]
+    client.post_attachments[("g1", "t1", "p2")] = [{"id": "a2"}]
+    atts = fetch_attachments("c1", mailbox="group:eng@x.com")
+    assert [a["postId"] for a in atts] == ["p1", "p2"]
