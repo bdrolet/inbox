@@ -1,13 +1,27 @@
+import logging
 from datetime import datetime, timezone
 from typing import Optional
+
+import requests
 
 from clients.azure.email import Email
 from models.message import Message
 
+logger = logging.getLogger(__name__)
+
 
 def fetch(message_id: str, client) -> Optional[Email]:
-    """Fetch a single email by ID from the Graph API."""
-    return client.get_email_details(message_id)
+    """Fetch a single email by ID from the Graph API.
+
+    Returns None on any Graph failure — the pipeline treats fetch failures
+    as skips (pre-existing behavior, preserved when the client started
+    raising instead of swallowing errors).
+    """
+    try:
+        return client.get_email_details(message_id)
+    except requests.RequestException:
+        logger.exception("Failed to fetch message %s", message_id)
+        return None
 
 
 def normalize(email: Email, raw: dict | None = None) -> Message:

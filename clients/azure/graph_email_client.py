@@ -8,6 +8,7 @@ import logging
 import os
 from datetime import datetime
 from typing import Dict, List, Optional
+from urllib.parse import quote
 
 import msal
 import requests
@@ -351,36 +352,39 @@ class GraphEmailClient:
                 print(f"Response: {e.response.text}")
             return all_emails
 
-    def get_email_details(self, email_id: str) -> Optional[Email]:
-        """
-        Get detailed information about a specific email
+    def _read_base(self, mailbox: str) -> str:
+        """Full URL base for mailbox reads: {endpoint}/me or {endpoint}/users/{address} (URL-quoted)."""
+        if mailbox == "me":
+            return f"{self.graph_endpoint}/me"
+        return f"{self.graph_endpoint}/users/{quote(mailbox, safe='@')}"
+
+    def get_email_details(self, email_id: str, mailbox: str = "me") -> Optional[Email]:
+        """Get detailed information about a specific email.
 
         Args:
-            email_id: The ID of the email to retrieve
+            email_id: The ID of the email to retrieve.
+            mailbox: 'me' for the primary mailbox or an email address for a
+                shared mailbox (same convention as search_emails).
 
         Returns:
-            Email object or None if not found
+            Email object, or None if the message does not exist (Graph 404).
+
+        Raises:
+            requests.HTTPError: any Graph error other than 404 (e.g. 403 when
+                the token lacks rights to a shared mailbox).
         """
         if not self.access_token:
             raise ValueError("Not authenticated. Call authenticate() first.")
 
-        try:
-            endpoint = f"{self.graph_endpoint}/me/messages/{email_id}"
-
-            # Get full email details including body
-            params = {
-                "$select": "id,subject,from,toRecipients,ccRecipients,bccRecipients,receivedDateTime,sentDateTime,body,bodyPreview,isRead,hasAttachments,attachments,webLink"
-            }
-
-            response = requests.get(endpoint, headers=self.get_headers(), params=params)
-            response.raise_for_status()
-
-            email_data = response.json()
-            return Email(email_data)
-
-        except requests.exceptions.RequestException as e:
-            print(f"Error retrieving email details: {str(e)}")
+        endpoint = f"{self._read_base(mailbox)}/messages/{email_id}"
+        params = {
+            "$select": "id,subject,from,toRecipients,ccRecipients,bccRecipients,receivedDateTime,sentDateTime,body,bodyPreview,isRead,hasAttachments,attachments,webLink"
+        }
+        response = requests.get(endpoint, headers=self.get_headers(), params=params)
+        if response.status_code == 404:
             return None
+        response.raise_for_status()
+        return Email(response.json())
 
     def mark_as_read(self, email_id: str) -> bool:
         """
@@ -714,19 +718,21 @@ class GraphEmailClient:
         response.raise_for_status()
         logger.info("Sent message to %s (base=%s)", to, base)
 
-    def get_attachments(self, message_id: str) -> list[dict]:
-        """GET /me/messages/{id}/attachments — returns raw attachment dicts."""
-        try:
-            response = requests.get(
-                f"{self.graph_endpoint}/me/messages/{message_id}/attachments",
-                headers=self.get_headers(),
-            )
-            response.raise_for_status()
-            return response.json().get("value", [])
-        except requests.exceptions.RequestException as e:
-            detail = e.response.text[:500] if e.response is not None else ""
-            logger.error("get_attachments failed for %s: %s %s", message_id, e, detail)
-            return []
+    def get_attachments(self, message_id: str, mailbox: str = "me") -> list[dict]:
+        """GET {mailbox}/messages/{id}/attachments — returns raw attachment dicts.
+
+        Raises:
+            LookupError: the message does not exist (Graph 404).
+            requests.HTTPError: any other Graph error.
+        """
+        response = requests.get(
+            f"{self._read_base(mailbox)}/messages/{message_id}/attachments",
+            headers=self.get_headers(),
+        )
+        if response.status_code == 404:
+            raise LookupError("message not found")
+        response.raise_for_status()
+        return response.json().get("value", [])
 
     def _find_event_id_by_ical_uid(self, ical_uid: str) -> str | None:
         """Return the Graph event id matching iCalUID, or None if not found."""
@@ -809,10 +815,7 @@ class GraphEmailClient:
             mailbox: 'me' for primary mailbox or an email address for a shared mailbox.
             limit: Maximum number of results to return.
         """
-        if mailbox == "me":
-            endpoint = f"{self.graph_endpoint}/me/messages"
-        else:
-            endpoint = f"{self.graph_endpoint}/users/{mailbox}/messages"
+        endpoint = f"{self._read_base(mailbox)}/messages"
 
         params = {
             "$search": f'"{query}"',
@@ -830,10 +833,17 @@ class GraphEmailClient:
             )
             return []
 
-    def get_member_groups(self) -> List[Dict]:
+    def get_member_groups(self, raise_on_error: bool = False) -> List[Dict]:
         """Return M365 Unified groups the authenticated user belongs to.
 
         Returns list of dicts with 'id', 'display_name', 'mail'.
+
+        Args:
+            raise_on_error: if True, re-raise Graph failures instead of
+                returning a partial/empty list. Callers that need to
+                distinguish "no such group" from "Graph is unreachable"
+                (e.g. group-id resolution) should pass True; best-effort
+                callers (e.g. search) should leave this False.
         """
         endpoint = f"{self.graph_endpoint}/me/memberOf"
         params: Optional[Dict[str, str]] = {
@@ -860,6 +870,8 @@ class GraphEmailClient:
         except requests.exceptions.RequestException as e:
             detail = e.response.text[:500] if e.response is not None else ""
             logger.error("get_member_groups failed: %s %s", e, detail)
+            if raise_on_error:
+                raise
         return groups
 
     def search_group_conversations(self, group_id: str, query: str, limit: int = 25) -> List[Email]:
@@ -910,6 +922,67 @@ class GraphEmailClient:
                 "search_group_conversations failed for group=%s: %s %s", group_id, e, detail
             )
         return results
+
+    def get_group_conversation(self, group_id: str, conversation_id: str) -> Optional[dict]:
+        """Fetch an M365 group conversation with all its posts.
+
+        Returns:
+            {"topic": str, "lastDeliveredDateTime": str | None, "posts": [dict]}
+            where each post is the raw Graph post dict annotated with its
+            "threadId". None if the conversation does not exist (Graph 404).
+
+        Raises:
+            requests.HTTPError: any Graph error other than 404.
+        """
+        conv_url = f"{self.graph_endpoint}/groups/{group_id}/conversations/{conversation_id}"
+        response = requests.get(
+            conv_url,
+            headers=self.get_headers(),
+            params={"$select": "id,topic,lastDeliveredDateTime"},
+        )
+        if response.status_code == 404:
+            return None
+        response.raise_for_status()
+        convo = response.json()
+
+        threads_resp = requests.get(
+            f"{conv_url}/threads", headers=self.get_headers(), params={"$select": "id"}
+        )
+        threads_resp.raise_for_status()
+
+        posts: list[dict] = []
+        for thread in threads_resp.json().get("value", []):
+            posts_resp = requests.get(
+                f"{self.graph_endpoint}/groups/{group_id}/threads/{thread['id']}/posts",
+                headers=self.get_headers(),
+                params={"$select": "id,body,from,sender,receivedDateTime,hasAttachments"},
+            )
+            posts_resp.raise_for_status()
+            for post in posts_resp.json().get("value", []):
+                post["threadId"] = thread["id"]
+                posts.append(post)
+
+        return {
+            "topic": convo.get("topic", ""),
+            "lastDeliveredDateTime": convo.get("lastDeliveredDateTime"),
+            "posts": posts,
+        }
+
+    def get_group_post_attachments(self, group_id: str, thread_id: str, post_id: str) -> list[dict]:
+        """GET /groups/{gid}/threads/{tid}/posts/{pid}/attachments — raw dicts.
+
+        Raises:
+            LookupError: the post does not exist (Graph 404).
+            requests.HTTPError: any other Graph error.
+        """
+        response = requests.get(
+            f"{self.graph_endpoint}/groups/{group_id}/threads/{thread_id}/posts/{post_id}/attachments",
+            headers=self.get_headers(),
+        )
+        if response.status_code == 404:
+            raise LookupError("post not found")
+        response.raise_for_status()
+        return response.json().get("value", [])
 
     def move_message_to_action_folder(
         self, message_id: str, folder_display_name: str
