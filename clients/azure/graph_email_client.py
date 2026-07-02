@@ -912,6 +912,67 @@ class GraphEmailClient:
             )
         return results
 
+    def get_group_conversation(self, group_id: str, conversation_id: str) -> Optional[dict]:
+        """Fetch an M365 group conversation with all its posts.
+
+        Returns:
+            {"topic": str, "lastDeliveredDateTime": str | None, "posts": [dict]}
+            where each post is the raw Graph post dict annotated with its
+            "threadId". None if the conversation does not exist (Graph 404).
+
+        Raises:
+            requests.HTTPError: any Graph error other than 404.
+        """
+        conv_url = f"{self.graph_endpoint}/groups/{group_id}/conversations/{conversation_id}"
+        response = requests.get(
+            conv_url,
+            headers=self.get_headers(),
+            params={"$select": "id,topic,lastDeliveredDateTime"},
+        )
+        if response.status_code == 404:
+            return None
+        response.raise_for_status()
+        convo = response.json()
+
+        threads_resp = requests.get(
+            f"{conv_url}/threads", headers=self.get_headers(), params={"$select": "id"}
+        )
+        threads_resp.raise_for_status()
+
+        posts: list[dict] = []
+        for thread in threads_resp.json().get("value", []):
+            posts_resp = requests.get(
+                f"{self.graph_endpoint}/groups/{group_id}/threads/{thread['id']}/posts",
+                headers=self.get_headers(),
+                params={"$select": "id,body,from,sender,receivedDateTime,hasAttachments"},
+            )
+            posts_resp.raise_for_status()
+            for post in posts_resp.json().get("value", []):
+                post["threadId"] = thread["id"]
+                posts.append(post)
+
+        return {
+            "topic": convo.get("topic", ""),
+            "lastDeliveredDateTime": convo.get("lastDeliveredDateTime"),
+            "posts": posts,
+        }
+
+    def get_group_post_attachments(self, group_id: str, thread_id: str, post_id: str) -> list[dict]:
+        """GET /groups/{gid}/threads/{tid}/posts/{pid}/attachments — raw dicts.
+
+        Raises:
+            LookupError: the post does not exist (Graph 404).
+            requests.HTTPError: any other Graph error.
+        """
+        response = requests.get(
+            f"{self.graph_endpoint}/groups/{group_id}/threads/{thread_id}/posts/{post_id}/attachments",
+            headers=self.get_headers(),
+        )
+        if response.status_code == 404:
+            raise LookupError("post not found")
+        response.raise_for_status()
+        return response.json().get("value", [])
+
     def move_message_to_action_folder(
         self, message_id: str, folder_display_name: str
     ) -> dict | None:
