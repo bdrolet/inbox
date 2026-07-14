@@ -19,6 +19,7 @@ import argparse
 import os
 import re
 import sys
+import time
 from datetime import datetime, timedelta, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -32,12 +33,19 @@ _SKIP_PATTERN = re.compile(
     r"(no.?reply|noreply|do.?not.?reply|mailer.?daemon|notifications?@|alerts?@|support@|newsletter@)",
     re.IGNORECASE,
 )
+_SKIP_DOMAINS = {
+    "group.calendar.google.com",
+    "bcc.na2.hubspot.com",
+}
 
 
 def _should_skip(address: str) -> bool:
     if not address:
         return True
     if address.lower() == OWN_EMAIL.lower():
+        return True
+    domain = address.split("@")[-1].lower() if "@" in address else ""
+    if domain in _SKIP_DOMAINS:
         return True
     return bool(_SKIP_PATTERN.search(address))
 
@@ -96,12 +104,12 @@ def main():
     ):
         if i % 50 == 0:
             print(f"  Progress: {i}/{len(contacts)}...")
-        contact_id = hubspot.upsert_contact(address, display)
+        contact_id = hubspot.upsert_contact(address, display, last_seen)
         if contact_id is None:
             skipped += 1
         else:
-            # upsert_contact doesn't tell us create vs update, so just count non-None
             updated += 1
+        time.sleep(0.1)
 
     print(f"\nDone. {updated} upserted, {skipped} skipped (errors or no token).")
 

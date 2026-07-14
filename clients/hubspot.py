@@ -1,7 +1,8 @@
 import json
 import logging
 import os
-from datetime import datetime
+import time
+from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -14,13 +15,26 @@ def _client():
     return HubSpot(access_token=_HUBSPOT_TOKEN)
 
 
-def upsert_contact(sender_email: str, display_name: str) -> str | None:
+def _hs_ts(dt: datetime) -> str:
+    """Convert a datetime to a HubSpot date timestamp (midnight UTC, milliseconds)."""
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    midnight = dt.replace(hour=0, minute=0, second=0, microsecond=0)
+    return str(int(midnight.timestamp() * 1000))
+
+
+def upsert_contact(
+    sender_email: str,
+    display_name: str,
+    last_interaction: datetime | None = None,
+) -> str | None:
     """Upsert a contact by email address. Returns the HubSpot contact ID, or None on error."""
     if not _HUBSPOT_TOKEN:
         return None
 
     from hubspot.crm.contacts import (
         PublicObjectSearchRequest,
+        SimplePublicObjectInput,
         SimplePublicObjectInputForCreate,
     )
     from hubspot.crm.contacts.exceptions import ApiException
@@ -30,35 +44,57 @@ def upsert_contact(sender_email: str, display_name: str) -> str | None:
     firstname = parts[0] if parts else ""
     lastname = parts[1] if len(parts) > 1 else ""
 
-    try:
-        client = _client()
-        result = client.crm.contacts.search_api.do_search(
-            PublicObjectSearchRequest(
-                filter_groups=[
-                    {
-                        "filters": [
-                            {"value": sender_email, "propertyName": "email", "operator": "EQ"}
-                        ]
-                    }
-                ],
-                limit=1,
+    for attempt in range(3):
+        try:
+            client = _client()
+            result = client.crm.contacts.search_api.do_search(
+                PublicObjectSearchRequest(
+                    filter_groups=[
+                        {
+                            "filters": [
+                                {"value": sender_email, "propertyName": "email", "operator": "EQ"}
+                            ]
+                        }
+                    ],
+                    limit=1,
+                )
             )
-        )
-        if result.results:
-            return result.results[0].id
-        else:
-            props = {"email": sender_email}
-            if firstname:
-                props["firstname"] = firstname
-            if lastname:
-                props["lastname"] = lastname
-            created = client.crm.contacts.basic_api.create(
-                SimplePublicObjectInputForCreate(properties=props)
-            )
-            return created.id
-    except ApiException as e:
-        logger.warning("HubSpot upsert_contact failed for %s: %s", sender_email, e)
-        return None
+            if result.results:
+                contact_id = result.results[0].id
+                if last_interaction:
+                    client.crm.contacts.basic_api.update(
+                        contact_id,
+                        SimplePublicObjectInput(
+                            properties={"last_email_date": _hs_ts(last_interaction)}
+                        ),
+                    )
+                return contact_id
+            else:
+                props = {
+                    "email": sender_email,
+                    "lifecyclestage": "lead",
+                    "hs_lead_status": "NEW",
+                    "hubspot_owner_id": "93744502",
+                }
+                if firstname:
+                    props["firstname"] = firstname
+                if lastname:
+                    props["lastname"] = lastname
+                if last_interaction:
+                    props["last_email_date"] = _hs_ts(last_interaction)
+                created = client.crm.contacts.basic_api.create(
+                    SimplePublicObjectInputForCreate(properties=props)
+                )
+                return created.id
+        except ApiException as e:
+            logger.warning("HubSpot upsert_contact failed for %s: %s", sender_email, e)
+            return None
+        except Exception as e:
+            if attempt < 2:
+                time.sleep(2**attempt)
+                continue
+            logger.warning("HubSpot upsert_contact gave up for %s: %s", sender_email, e)
+            return None
 
 
 def log_email(
