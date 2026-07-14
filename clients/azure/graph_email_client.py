@@ -186,12 +186,18 @@ class GraphEmailClient:
             print(f"Device flow authentication error: {str(e)}")
             return False
 
-    def get_headers(self) -> Dict[str, str]:
-        """Get headers for Graph API requests"""
+    def get_headers(self, immutable: bool = False) -> Dict[str, str]:
+        """Headers for Graph API requests. When immutable=True, request/accept
+        immutable IDs (stable across folder moves within the mailbox)."""
         if not self.access_token:
             raise ValueError("Not authenticated. Call authenticate() first.")
-
-        return {"Authorization": f"Bearer {self.access_token}", "Content-Type": "application/json"}
+        headers = {
+            "Authorization": f"Bearer {self.access_token}",
+            "Content-Type": "application/json",
+        }
+        if immutable:
+            headers["Prefer"] = 'IdType="ImmutableId"'
+        return headers
 
     def get_emails_since(self, since_datetime: datetime, folder: str = "inbox") -> List[Email]:
         """
@@ -380,7 +386,7 @@ class GraphEmailClient:
         params = {
             "$select": "id,subject,from,toRecipients,ccRecipients,bccRecipients,receivedDateTime,sentDateTime,body,bodyPreview,isRead,hasAttachments,attachments,webLink"
         }
-        response = requests.get(endpoint, headers=self.get_headers(), params=params)
+        response = requests.get(endpoint, headers=self.get_headers(immutable=True), params=params)
         if response.status_code == 404:
             return None
         response.raise_for_status()
@@ -1000,7 +1006,7 @@ class GraphEmailClient:
             move_url = f"{self.graph_endpoint}/me/messages/{message_id}/move"
             response = requests.post(
                 move_url,
-                headers=self.get_headers(),
+                headers=self.get_headers(immutable=True),
                 json={"destinationId": dest_id},
             )
             response.raise_for_status()
@@ -1018,3 +1024,45 @@ class GraphEmailClient:
                 detail,
             )
             return None
+
+    def list_inbox_categories(self) -> list[dict]:
+        """Return [{'id', 'categories'}] for all Inbox messages (immutable IDs)."""
+        results: list[dict] = []
+        url = (
+            f"{self.graph_endpoint}/me/mailFolders/inbox/messages"
+            "?$select=id,categories&$top=100"
+        )
+        while url:
+            resp = requests.get(url, headers=self.get_headers(immutable=True))
+            resp.raise_for_status()
+            data = resp.json()
+            for m in data.get("value", []):
+                results.append({"id": m["id"], "categories": m.get("categories", [])})
+            url = data.get("@odata.nextLink")
+        return results
+
+    def get_web_link(self, external_id: str) -> str | None:
+        """Resolve a message's current webLink via its immutable ID."""
+        resp = requests.get(
+            f"{self.graph_endpoint}/me/messages/{external_id}",
+            headers=self.get_headers(immutable=True),
+            params={"$select": "webLink"},
+        )
+        if resp.status_code == 404:
+            return None
+        resp.raise_for_status()
+        return resp.json().get("webLink")
+
+    def set_categories(self, external_id: str, categories: list[str]) -> bool:
+        """Overwrite a message's Outlook categories (immutable ID)."""
+        try:
+            resp = requests.patch(
+                f"{self.graph_endpoint}/me/messages/{external_id}",
+                headers=self.get_headers(immutable=True),
+                json={"categories": categories},
+            )
+            resp.raise_for_status()
+            return True
+        except requests.exceptions.RequestException as e:
+            logger.error("set_categories failed for %s: %s", external_id, e)
+            return False

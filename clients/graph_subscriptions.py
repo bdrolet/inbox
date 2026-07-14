@@ -38,7 +38,7 @@ def register(client, notification_url: str) -> dict:
             "expirationDateTime": _expiry(),
             "clientState": os.environ.get("WEBHOOK_CLIENT_STATE", "inbox-webhook"),
         },
-        headers=client.get_headers(),
+        headers=client.get_headers(immutable=True),
     )
     resp.raise_for_status()
     return resp.json()
