@@ -18,8 +18,12 @@ early each morning.
   immediately as they do today. Only the *physical folder move* is deferred.
 - Classified mail stays in the Inbox and is moved to its destination folder by a **cron
   sweep at 5:00 AM America/New_York**.
+- The folder decision — the business logic — runs **at move time, from the message's current
+  tags**, not at classify time. A correction made during the day is honored by that night's
+  sweep.
 - Asana task links keep working **permanently**, before and after the move, without ever
   patching the task.
+- A message can be **held in the Inbox** past the sweep via a `keep_until` tag.
 
 ## Non-goals (explicitly out of scope)
 
@@ -29,29 +33,38 @@ early each morning.
   immediate.
 - **Backfilling historical messages** into the new immutable-ID format. The switch is
   forward-only.
+- **A UI for setting `keep_until`.** For v1 the hold tag is added manually in Outlook. A
+  convenience affordance (snooze button / API endpoint) is a possible future enhancement.
 
 ## Accepted trade-offs
 
 These were reviewed and accepted during design:
 
 - **DB-vs-mailbox inconsistency during the day.** Once classified, the DB records the
-  destination (e.g. `REFERENCE`), but the email physically remains in the Inbox until the
+  category (e.g. `REFERENCE`), but the email physically remains in the Inbox until the
   5 AM sweep. `inbox-api`'s live mailbox search will therefore surface reference/ignore mail
   in the Inbox rather than its destination folder until the sweep runs. Self-heals every
   morning. The DB remains the source of truth for category, so DB-backed search stays correct.
 - **Inbox accumulation + uneven review windows.** Classified mail piles up in the Inbox
   until morning; unread counts run higher. An email arriving at 11 PM gets a short review
   window; one from early the previous morning gets ~24 h. Inherent to a fixed-time sweep.
+- **Stateless re-filing.** The sweep's rule is "tagged + in Inbox at 5 AM → file by tag."
+  There is no per-message "already moved" memory. If a filed message is dragged back into the
+  Inbox with its category tag intact, the next sweep re-files it. To keep something in the
+  Inbox, use a `keep_until` tag or remove its category tag. This is the deliberate cost of a
+  stateless, tag-driven sweep, and keeps behavior fully predictable from what's visible on the
+  message.
 
 ## Architecture overview
 
 Three coordinated changes:
 
-1. **Stop the inline move; record intent instead.** The classify pipeline records the
-   *intended* destination folder on the classification row and does everything else
-   (tags, tasks, drafts, ntfy) immediately. No folder move at classify time.
-2. **A morning sweep** (new scheduled Cloud Function) executes the pending moves in a batch
-   at 5 AM ET, skipping anything the user already handled manually.
+1. **Stop the inline move.** The classify pipeline does everything except the move — it
+   classifies, applies tags (which encode the category), creates the Asana task / reply draft,
+   and sends the ntfy notification. It records **no** pending-move state.
+2. **A stateless, tag-driven morning sweep** (new scheduled Cloud Function) enumerates the
+   Inbox at 5 AM ET and files each message into the folder implied by its current category
+   tag — honoring `keep_until` holds and skipping urgent / untagged mail.
 3. **Immutable IDs + a redirector** so Asana task links resolve to the message's *current*
    location for the life of the message, across the sweep move and any manual moves.
 
@@ -61,20 +74,22 @@ Three coordinated changes:
 Email arrives
   → webhook CF → Pub/Sub → processor CF (pipeline)
       → classify
-      → record pending_folder on classification   (NEW: no move here)
-      → apply tags (immediate)
+      → apply tags (immediate)  — Outlook categories carry the category value
       → dispatch: create Asana task / draft / ntfy (immediate)
            Asana task "Open in Outlook" link = redirector URL, not raw webLink
+      → NO folder move, NO pending-move state written
 
 ... message sits in Inbox all day, tagged, with a live task ...
 
 5:00 AM ET
   → Cloud Scheduler → Pub/Sub (inbox-sweep) → sweep CF
-      → for each classification with pending_folder set and moved_at NULL:
-           GET message by immutable id, $select=parentFolderId
-             - not found (404)        → mark moved_at, skip (deleted/gone)
-             - not in Inbox           → mark moved_at, skip (user already filed it)
-             - in Inbox               → move to pending_folder, mark moved_at
+      → list Inbox messages (GET /me/mailFolders/inbox/messages?$select=id,categories)
+      → for each message:
+           - keep_until tag present and not elapsed  → skip (held in Inbox)
+           - no recognized category tag              → skip (untagged / personal)
+           - category maps to no folder (urgent)     → skip
+           - otherwise                               → move to folder_for_category(tag);
+                                                        strip any elapsed keep_until tag
 ```
 
 ## Components
@@ -82,20 +97,21 @@ Email arrives
 ### 1. Immutable IDs (`clients/azure/graph_email_client.py`, `clients/graph_subscriptions.py`)
 
 Adopt Microsoft Graph immutable IDs so a message's `id` survives folder moves within the
-mailbox. Without this, the stored `external_id` dies the moment the message moves (sweep or
-manual), which would break both the sweep and the redirector.
+mailbox. This is required by the **redirector**: the stored `external_id` must still resolve
+after the message is moved (by the sweep or manually). The sweep itself does *not* depend on
+immutable IDs — it moves each message using the fresh ID from its live Inbox listing — but
+adopting them repo-wide keeps one ID format everywhere.
 
-- Add `Prefer: IdType="ImmutableId"` to the headers used for **message reads, moves, and
-  the redirector's live lookup**. Scope it to a dedicated header variant (e.g.
+- Add `Prefer: IdType="ImmutableId"` to the headers used for **message reads, moves, and the
+  redirector's live lookup**. Scope it to a dedicated header variant (e.g.
   `get_headers(immutable=True)`) used on the message paths — **not** globally on
   `get_headers()`, to avoid unintended effects on group / shared-mailbox / thread-post reads
   that use different ID types.
 - Add the same header to **subscription creation** (`graph_subscriptions.register`) so change
   notifications deliver immutable IDs in `resourceData.id`. Existing subscriptions keep the
-  old format, so the live subscription
-  (`f58b30e4-4090-433a-87cc-fbe1f87f574a`) must be **deleted and recreated**; the renew CF
-  self-heals the new ID into the `graph-subscription-id` secret, and
-  `terraform.tfvars` is updated.
+  old format, so the live subscription (`f58b30e4-4090-433a-87cc-fbe1f87f574a`) must be
+  **deleted and recreated**; the renew CF self-heals the new ID into the
+  `graph-subscription-id` secret, and `terraform.tfvars` is updated.
 - **Forward-only.** Historical `external_id` values are mutable-format and won't match new
   immutable-format IDs. Dedup keys on `(source, external_id)`; this only matters for a
   message notified under both formats, which won't happen in practice (notifications fire once,
@@ -105,28 +121,25 @@ manual), which would break both the sweep and the redirector.
 `graph_message_id` stored in `services/calendar_invite.py` durable across the move, fixing a
 latent "RSVP button 404s after move" bug. No code change required for that benefit.
 
-### 2. Pending-move state (`repo/schema.sql`, `repo/classifications.py`)
+### 2. No pending-move DB state
 
-Add two columns to `classifications` (via `ADD COLUMN IF NOT EXISTS`, matching the existing
-`importance` migration pattern):
+The tag-driven sweep is stateless, so **no schema change is needed** — no `pending_folder`,
+no `moved_at`. The "which folder" decision is derived from the message's Outlook categories at
+sweep time; the "has it been moved" question is answered by the message's folder location
+(it's not in the Inbox anymore). This is a deliberate simplification over an earlier
+classify-time-recorded-intent approach.
 
-- `pending_folder TEXT` — destination folder name. `NULL` = no move intended (e.g. urgent).
-- `moved_at TIMESTAMPTZ` — set by the sweep when the move is executed **or** determined
-  terminal (deleted / already filed). `NULL` + non-null `pending_folder` = still pending.
+### 3. Handlers stop moving; folder mapping centralized (`handlers/actions/*`, `handlers/actions/_shared.py`, `services/archiving.py`)
 
-A partial index on `(pending_folder) WHERE moved_at IS NULL` keeps the sweep query cheap.
-
-`classifications.insert` gains a `pending_folder` parameter.
-
-### 3. Handlers record intent instead of moving (`handlers/actions/*`, `handlers/actions/_shared.py`)
-
-- `_shared.prepare()` no longer calls `archiving.move_to_folder()`. Its `folder` argument
-  becomes the value written to `pending_folder` on the classification.
-- Category → pending_folder mapping is unchanged from today's inline behavior:
+- `_shared.prepare()` no longer calls `archiving.move_to_folder()`, and the handlers no longer
+  pass a `folder`. They classify-time work is unchanged otherwise: calendar-invite detection,
+  summary, deadline, Asana task, reply draft, ntfy.
+- The category → folder mapping moves out of the individual handlers into a single shared
+  function, `services/archiving.folder_for_category(category) -> str | None`:
   `IGNORE`/`REFERENCE` → `Archive`, `RESPOND` → `reply_required`, `REVIEW` → `review`,
-  `URGENT` → `NULL` (no move).
-- Calendar-invite detection and draft creation continue to run at classify time against the
-  still-in-Inbox message — now strictly more robust, since the message hasn't moved.
+  `URGENT` → `None` (no move). This is the one source of truth, used only by the sweep.
+- Calendar-invite detection and draft creation now run against the still-in-Inbox message —
+  strictly more robust than today, since the message hasn't moved.
 - The Asana "Open in Outlook" link becomes the **redirector URL** (below), not the raw
   webLink.
 
@@ -150,72 +163,96 @@ GET /r/{message_uuid}  →  302 to the message's current Outlook webLink
   so no message content is exposed. The `{message_uuid}` is an unguessable random UUID. The
   other `inbox-api` endpoints keep their Bearer-token auth; the redirector is a separate,
   auth-free route because it is clicked from a browser via Asana.
-- Failure modes: unknown UUID → 404; Graph lookup fails → 502/404 with a short message.
+- Failure modes: unknown UUID → 404; Graph lookup fails → 502.
 
 ### 5. Morning sweep (new CF `functions/sweep/`, Terraform)
 
 A new scheduled Cloud Function, mirroring the existing `inbox-renew` scheduler→CF pattern:
 
-- **Cloud Scheduler** cron at `0 5 * * *`, timezone `America/New_York` → publishes to a new
+- **Cloud Scheduler** cron `0 5 * * *`, timezone `America/New_York` → publishes to a new
   Pub/Sub topic `inbox-sweep` → sweep CF.
 - Sweep logic:
-  1. Query classifications with `pending_folder` set and `moved_at IS NULL`.
-  2. For each, `GET` the message by immutable id with `$select=parentFolderId`:
-     - **404 / not found** → user deleted it (or it's gone). Mark `moved_at`, skip.
-     - **not in Inbox** → user already filed it manually; their action wins. Mark `moved_at`,
-       skip. (This explicit check is required *because* immutable IDs no longer go stale on a
-       manual move — we can't rely on a 404 to detect it.)
-     - **in Inbox** → move to `pending_folder`, mark `moved_at`.
-  3. Marking `moved_at` on every terminal outcome guarantees idempotency: a crash between the
-     Graph move and the DB write is safe to retry, and rows never get stuck pending.
-- Emits OTel metrics (count moved / skipped / errored) consistent with the rest of the
-  pipeline.
+  1. List Inbox messages: `GET /me/mailFolders/inbox/messages?$select=id,categories` (paged).
+  2. For each message, inspect its `categories`:
+     - **`keep_until` present and not elapsed** → skip (see the `keep_until` contract below).
+     - **no entry matching a `Category` enum value** → skip (untagged / personal mail).
+     - **category maps to `None`** (urgent) → skip.
+     - **otherwise** → move to `folder_for_category(category)`; if an *elapsed* `keep_until`
+       tag is present, strip it in the same PATCH/move cleanup.
+  3. Idempotency is inherent: moving removes the message from the Inbox, so a re-run simply
+     doesn't see it. A crash mid-sweep is safe to retry.
+- Emits OTel metrics (moved / held / skipped / errored counts) consistent with the rest of
+  the pipeline.
+
+### `keep_until` contract
+
+A message is held in the Inbox past the sweep by adding an Outlook category of the form
+`keep_until:<when>`, where `<when>` is either `YYYY-MM-DD` or `YYYY-MM-DDTHH:MM`, interpreted
+in `America/New_York`.
+
+- **Bare date `D`** — the message is held through the end of day `D`; it is filed on the first
+  sweep whose date is strictly after `D`.
+- **Datetime `D T HH:MM`** — the message is held until `now_ET >= D T HH:MM`; the next sweep
+  at or after that moment files it.
+- When the hold elapses (or is absent), the message is filed normally by its category tag, and
+  the elapsed `keep_until:` category is stripped as cleanup.
+- **Unparseable `keep_until:*`** → fail safe: treat as not-yet-elapsed (keep in Inbox) and log
+  a warning, so a mistyped hold never causes premature filing.
+- A `keep_until` on an otherwise-untagged message simply keeps it in the Inbox; once elapsed
+  there is no category to file by, so it stays. That is acceptable.
+- Setting the tag is a manual Outlook action for v1; a snooze affordance is a future
+  enhancement (out of scope).
 
 ### 6. Terraform
 
 - New Pub/Sub topic `inbox-sweep`, Cloud Scheduler job (`0 5 * * *`, `America/New_York`),
-  sweep Cloud Function + its service account and IAM (Cloud SQL, Secret Manager for Graph +
-  DB creds).
+  sweep Cloud Function + its service account and IAM (Secret Manager for Graph creds; the
+  sweep needs no DB access).
 - Update `graph_subscription_id` in `terraform.tfvars` after the subscription is recreated
   with the immutable-ID header.
 
 ## Error handling
 
-- **Sweep partial failure:** idempotent by design — `moved_at` is set on every terminal
-  outcome (moved, deleted, already-filed); the pending query naturally excludes completed
-  rows on retry.
+- **Sweep partial failure:** idempotent by design — the Inbox folder location *is* the state;
+  completed moves drop out of the Inbox and aren't reconsidered on retry. A per-message move
+  failure is logged, counted, and skipped without aborting the batch.
 - **Redirector resolution failure:** returns 404/502 rather than crashing; the Asana task
   still carries subject, summary, sender, and (for RESPOND) the draft link.
+- **Malformed `keep_until`:** fail safe — keep the message in the Inbox and warn.
 - **Immutable-ID switchover:** forward-only; no attempt to reconcile old mutable IDs.
 - Existing per-stage `try/except` + OTel error counters in the pipeline are unchanged.
 
 ## Testing
 
-- **Unit:** category → `pending_folder` mapping; `classifications.insert` persists
-  `pending_folder`; sweep decision logic for the three cases (in-Inbox / moved-away /
-  deleted) with a mocked Graph client; redirector resolves UUID → 302 and handles unknown
-  UUID / Graph failure.
-- **Integration / local E2E:** run the pipeline against a real test email — assert it is
-  classified, tagged, task created with a redirector link, and **not** moved. Then invoke the
-  sweep locally and assert the message moves to the destination folder and `moved_at` is set.
-  Manually move a second test message out of the Inbox first and assert the sweep skips it.
-- **Redirector:** hit `/r/{uuid}` before and after a sweep move; both resolve to a working
-  Outlook link.
-- Immutable-ID subscription: verify a freshly-arrived notification's `resourceData.id` is in
-  immutable format and that fetch/move round-trip on it.
+- **Unit:**
+  - `folder_for_category` mapping for all five categories (urgent → `None`).
+  - Sweep per-message decision from a `categories` list: files by category tag; skips urgent,
+    untagged, and held (`keep_until` in future); files and strips an elapsed `keep_until`.
+  - `keep_until` parsing: bare date vs datetime, ET boundary behavior, unparseable → held.
+  - Redirector: UUID → 302 to resolved webLink; unknown UUID → 404; Graph failure → 502.
+- **Integration / local E2E:**
+  - Run the pipeline against a real test email — assert it is classified, tagged, task created
+    with a redirector link, and **not** moved.
+  - Invoke the sweep locally against the test mailbox: a tagged message moves to the mapped
+    folder; a `keep_until:<future>`-tagged message stays; an urgent-tagged message stays; an
+    untagged message stays.
+  - Redirector: hit `/r/{uuid}` before and after a sweep move; both resolve to a working
+    Outlook link.
+- **Immutable-ID subscription:** verify a freshly-arrived notification's `resourceData.id` is
+  in immutable format and that a fetch/move round-trip on it succeeds.
 
 ## Rollout
 
-1. Land code (immutable-ID headers, schema columns, handler changes, redirector, sweep CF)
-   behind the normal PR flow.
+1. Land code (immutable-ID headers, `folder_for_category`, handler changes, redirector, sweep
+   CF) behind the normal PR flow.
 2. Apply Terraform (new topic, scheduler, sweep CF).
 3. Recreate the Graph subscription with the immutable-ID header; update
    `graph_subscription_id`.
-4. Deploy the processor CF. From this point new mail is recorded with `pending_folder` and
-   left in the Inbox.
-5. First 5 AM sweep files the accumulated day's mail.
+4. Deploy the processor CF. From this point new mail is tagged and left in the Inbox.
+5. First 5 AM sweep files the accumulated day's mail by tag.
 
 ## Open questions
 
 None blocking. Immutable-ID adoption is scoped to message read/move/subscription paths; the
-urgent-move feature and any redirector reuse for ntfy deep-links are deliberately deferred.
+urgent-move feature, a `keep_until` snooze UI, and any redirector reuse for ntfy deep-links
+are deliberately deferred.
