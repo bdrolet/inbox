@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass, field
 from datetime import datetime, time, timedelta
+from typing import Literal
 from zoneinfo import ZoneInfo
 
 ET = ZoneInfo("America/New_York")
@@ -22,7 +23,7 @@ def folder_for_category(category: str) -> str | None:
 
 @dataclass
 class SweepDecision:
-    action: str  # "move" | "hold" | "skip"
+    action: Literal["move", "hold", "skip"]
     folder: str | None = None
     strip_categories: list[str] = field(default_factory=list)
 
