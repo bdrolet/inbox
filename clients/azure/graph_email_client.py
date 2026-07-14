@@ -1028,10 +1028,7 @@ class GraphEmailClient:
     def list_inbox_categories(self) -> list[dict]:
         """Return [{'id', 'categories'}] for all Inbox messages (immutable IDs)."""
         results: list[dict] = []
-        url = (
-            f"{self.graph_endpoint}/me/mailFolders/inbox/messages"
-            "?$select=id,categories&$top=100"
-        )
+        url = f"{self.graph_endpoint}/me/mailFolders/inbox/messages?$select=id,categories&$top=100"
         while url:
             resp = requests.get(url, headers=self.get_headers(immutable=True))
             resp.raise_for_status()
