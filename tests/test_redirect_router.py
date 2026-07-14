@@ -19,7 +19,7 @@ def client(monkeypatch):
 
     fake_repo = types.ModuleType("repo.messages")
     fake_repo.get = lambda conn, mid: (
-        {"external_id": "IMMUT-1"} if mid == "known" else None
+        {"external_id": "IMMUT-1"} if mid == "550e8400-e29b-41d4-a716-446655440000" else None
     )
     monkeypatch.setitem(sys.modules, "repo.messages", fake_repo)
 
@@ -47,11 +47,16 @@ class _FakeGraph:
 
 
 def test_known_uuid_redirects(client):
-    r = client.get("/r/known")
+    r = client.get("/r/550e8400-e29b-41d4-a716-446655440000")
     assert r.status_code == 302
     assert r.headers["location"] == "https://outlook.example/msg"
 
 
 def test_unknown_uuid_404(client):
     r = client.get("/r/missing")
+    assert r.status_code == 404
+
+
+def test_malformed_uuid_404(client):
+    r = client.get("/r/not-a-uuid")
     assert r.status_code == 404

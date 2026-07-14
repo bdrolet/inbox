@@ -1,4 +1,5 @@
 import logging
+import uuid
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import RedirectResponse
@@ -10,6 +11,13 @@ router = APIRouter()
 
 @router.get("/r/{message_uuid}")
 def redirect(message_uuid: str) -> RedirectResponse:
+    # Validate UUID format early, before opening DB connection, to return 404
+    # for malformed paths (e.g. bot hitting /r/foo) instead of 500.
+    try:
+        uuid.UUID(message_uuid)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="unknown message") from None
+
     # Imported lazily (matches api/routers/search.py, emails.py) so the app
     # can be imported without psycopg/google-cloud/MSAL installed — those are
     # not present in the CI dev environment and only needed once a request
