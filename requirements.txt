@@ -36,3 +36,7 @@ google-api-python-client>=2.0
 
 # Environment
 python-dotenv>=1.0.0
+
+# Timezone database — guarantees zoneinfo.ZoneInfo("America/New_York") resolves
+# on minimal runtime images (used by the morning sweep in services/sweep_rules.py)
+tzdata>=2024.1
