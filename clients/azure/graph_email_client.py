@@ -410,7 +410,7 @@ class GraphEmailClient:
 
             data = {"isRead": True}
 
-            response = requests.patch(endpoint, headers=self.get_headers(), json=data)
+            response = requests.patch(endpoint, headers=self.get_headers(immutable=True), json=data)
             response.raise_for_status()
 
             return True
@@ -479,7 +479,7 @@ class GraphEmailClient:
         try:
             response = requests.patch(
                 f"{self.graph_endpoint}/me/messages/{message_id}",
-                headers=self.get_headers(),
+                headers=self.get_headers(immutable=True),
                 json={"categories": categories},
             )
             response.raise_for_status()
@@ -495,21 +495,21 @@ class GraphEmailClient:
         try:
             resp = requests.post(
                 f"{self.graph_endpoint}/me/messages/{external_id}/createReply",
-                headers=self.get_headers(),
+                headers=self.get_headers(immutable=True),
             )
             resp.raise_for_status()
             draft_id = resp.json()["id"]
 
             requests.patch(
                 f"{self.graph_endpoint}/me/messages/{draft_id}",
-                headers=self.get_headers(),
+                headers=self.get_headers(immutable=True),
                 json={"body": {"contentType": "Text", "content": body_text}},
             ).raise_for_status()
 
             # Fetch webLink explicitly — createReply response may return wrong folder context
             get_resp = requests.get(
                 f"{self.graph_endpoint}/me/messages/{draft_id}",
-                headers=self.get_headers(),
+                headers=self.get_headers(immutable=True),
                 params={"$select": "webLink"},
             )
             get_resp.raise_for_status()
@@ -733,7 +733,7 @@ class GraphEmailClient:
         """
         response = requests.get(
             f"{self._read_base(mailbox)}/messages/{message_id}/attachments",
-            headers=self.get_headers(),
+            headers=self.get_headers(immutable=True),
         )
         if response.status_code == 404:
             raise LookupError("message not found")

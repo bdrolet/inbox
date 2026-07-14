@@ -123,6 +123,8 @@ def sweep(request):
     otel.flush()
     try:
         counts = run_sweep(get_graph_client(), datetime.now(ZoneInfo("America/New_York")))
+        for action, n in counts.items():
+            otel.sweep_actions.add(n, {"action": action})
         return (counts, 200)
     finally:
         otel.flush()

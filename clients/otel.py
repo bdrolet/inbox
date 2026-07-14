@@ -29,6 +29,7 @@ human_feedback: metrics.Counter = metrics.NoOpMeter("noop").create_counter("noop
 confidence_hist: metrics.Histogram = metrics.NoOpMeter("noop").create_histogram("noop")
 stage_duration: metrics.Histogram = metrics.NoOpMeter("noop").create_histogram("noop")
 neighbors_hist: metrics.Histogram = metrics.NoOpMeter("noop").create_histogram("noop")
+sweep_actions: metrics.Counter = metrics.NoOpMeter("noop").create_counter("noop")
 
 
 def setup_telemetry(service_name: str) -> None:
@@ -39,6 +40,7 @@ def setup_telemetry(service_name: str) -> None:
     global _meter_provider, _tracer_provider, _metric_reader
     global emails_processed, emails_duplicates, pipeline_errors, claude_tokens
     global human_feedback, confidence_hist, stage_duration, neighbors_hist
+    global sweep_actions
 
     endpoint = os.environ.get("GRAFANA_OTLP_ENDPOINT")
     if not endpoint:
@@ -91,6 +93,9 @@ def setup_telemetry(service_name: str) -> None:
         "inbox.neighbors.count",
         unit="{count}",
         description="Labeled neighbors retrieved for classification",
+    )
+    sweep_actions = meter.create_counter(
+        "inbox.sweep.actions", description="Sweep actions by outcome (moved/held/skipped/errored)"
     )
 
     # --- Logs ---
