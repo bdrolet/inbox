@@ -1,6 +1,6 @@
 ---
 name: refreshing-msal-token
-version: 1.0.0
+version: 1.1.0
 description: >
   Use when the MSAL token cache needs to be refreshed — e.g. after adding new OAuth
   scopes to the Azure app registration, when the refresh token has expired, or when
@@ -15,13 +15,40 @@ metadata:
 
 ## Prerequisites
 
-If you are adding **new scopes**, they must already be added to the Azure app registration
-before this will work:
+If you are adding **new scopes**, they must already be added **and admin-consented** on the
+Azure app registration before the device flow will mint them. The token only ever contains
+scopes that are both registered on the app and consented — silent refresh will not pick up a
+scope that isn't there.
 
-1. portal.azure.com → Azure Active Directory → App Registrations → inbox app
-   (client ID in `terraform/terraform.tfvars`)
-2. API permissions → Add permission → Microsoft Graph → Delegated → add the scope(s)
-3. Grant admin consent if required (Group.Read.All always needs it)
+The user does this in the portal (there is no `az` CLI on this machine). Walk them through it:
+
+### Find the app registration
+
+1. **portal.azure.com** → in the top **search bar** type **App registrations** and open it
+   (or go via **Microsoft Entra ID**, but the search bar is fastest).
+2. Click the **All applications** tab. Paste the inbox app's **client ID** into the filter box
+   to find it. The client ID is in `.env` (`CLIENT_ID`) / `terraform/terraform.tfvars`
+   (tenant ID alongside it as `TENANT_ID` / `tenant_id`).
+3. Open the app.
+
+### Add the delegated scopes
+
+4. Left nav → **API permissions** → **Add a permission** → **Microsoft Graph** →
+   **Delegated permissions**.
+5. Search for and tick each scope you need, then **Add permissions**. Scopes already on the
+   app are fine to leave — just make sure every required one is listed.
+6. Back on the API permissions list, click **Grant admin consent for &lt;tenant&gt;** (e.g.
+   "Drolet Family") and confirm. The user must be **Global Administrator** for this button to
+   work (Ben is). Each scope should then show a green **Granted** check.
+   - `Group.Read.All` and the `*.Shared` / write scopes always require admin consent.
+
+Wait for the user to confirm all required scopes show **Granted** before starting the flow.
+If a scope is missing at the verify step (Step 5), it almost always means it wasn't consented
+here — send them back to this section.
+
+> **Tip:** before kicking off the interactive device flow, confirm with the user that the
+> scopes are already consented. The flow needs them to authenticate in a browser, so it's
+> wasteful to start it if the app registration isn't ready yet.
 
 ## Steps
 
@@ -62,7 +89,7 @@ until grep -q "Authentication successful\|authentication failed\|error" <output-
 cat <output-file>
 ```
 
-If it failed, check Azure app permissions (step 0) and retry.
+If it failed, check Azure app permissions (see [Prerequisites](#prerequisites)) and retry.
 
 ### 5. Verify scopes
 

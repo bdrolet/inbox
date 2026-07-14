@@ -10,12 +10,23 @@ See `docs/inbox-architecture.md` for the full design and `docs/v1-implementation
 
 Ready to start **Phase 5** (bootstrap labels, decommission Cloud Run Job).
 
+## Development workflow
+
+When implementing new code in this repo, open a pull request rather than committing to `main`:
+
+1. Create a feature branch off `main` before making changes (never commit code changes directly to `main`).
+2. Once the change is implemented and verified, open the PR using the `/pr-open` skill — it pulls the base branch, creates the feature branch, commits, pushes, and writes a rich PR description. Don't hand-roll `git push` + `gh pr create` for this repo.
+3. Do this proactively when work is complete — don't wait to be asked. (Still hold off if the change is incomplete, exploratory, or the user signalled they're mid-iteration.)
+
+This overrides the default "commit or push only when asked" behavior for code changes in this repo.
+
 ## Stack
 
 | | |
 |---|---|
 | **GCP project** | `bens-project-462804`, `us-central1` |
 | **Worker** | Cloud Function `inbox-process` (Pub/Sub event trigger, scale-to-zero) |
+| **API** | Cloud Run service `inbox-api` (FastAPI) — email search + outbound email endpoints |
 | **Database** | Cloud SQL Postgres 16 + pgvector, `bens-project-462804:us-central1:inbox`, db `app` |
 | **Email source** | Microsoft Graph API (Outlook/Office 365), MSAL auth |
 | **LLM** | Claude Sonnet via Anthropic API |
@@ -34,6 +45,8 @@ handlers/         Multi-service orchestration (pipeline, per-category actions)
 functions/        Cloud Function entry points (standalone, minimal deps)
   webhook/        Receives Graph notifications → publishes to Pub/Sub
   renew/          Renews Graph subscription every 2 days
+api/              FastAPI app (Cloud Run service inbox-api)
+  routers/        search.py (mailbox/group/DB search), emails.py (draft, attach, send)
 main.py           Processor Cloud Function entry point (Pub/Sub event trigger)
 scripts/          Entry points and one-off jobs
   analyze_emails.py  Existing Cloud Run Job (kept until Phase 5)
@@ -76,7 +89,7 @@ The Graph change-notification subscription points at the webhook Cloud Function 
 
 Webhook CF URL: `https://inbox-webhook-aizbgjlava-uc.a.run.app`
 
-Active subscription ID: `f0443feb-28dd-4d8c-be3c-919b5794fed4` (set in `terraform/terraform.tfvars` as `graph_subscription_id`). Renewal runs automatically every 2 days via `inbox-renew` CF + Cloud Scheduler.
+Active subscription ID: `f58b30e4-4090-433a-87cc-fbe1f87f574a` (set in `terraform/terraform.tfvars` as `graph_subscription_id`). Renewal runs automatically every 2 days via `inbox-renew` CF + Cloud Scheduler.
 
 To re-register (e.g. after subscription expires):
 ```python
@@ -93,11 +106,10 @@ print(result["id"])  # update graph_subscription_id in terraform.tfvars
 ```bash
 python3.13 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env  # fill in CLIENT_ID, CLIENT_SECRET, TENANT_ID, OPENAI_API_KEY
+cp .env.example .env  # fill in CLIENT_ID, CLIENT_SECRET, TENANT_ID, ANTHROPIC_API_KEY, ...
 python scripts/analyze_emails.py  # interactive mode, no GCP_PROJECT_ID set
 ```
 
-The existing `analyze_emails.py` runs locally without a DB or Pub/Sub.
 
 ## Terraform
 
@@ -122,15 +134,19 @@ CLOUD_SQL_CONNECTION_NAME=bens-project-462804:us-central1:inbox \
 
 | Secret Manager key | Used by |
 |---|---|
-| `client-id` | Graph API auth |
-| `client-secret` | Graph API auth |
-| `tenant-id` | Graph API auth |
-| `openai-api-key` | Existing Cloud Run Job (removed Phase 5) |
+| `client-id`, `client-secret`, `tenant-id` | Graph API auth (processor/webhook/renew CFs + `inbox-api`) |
 | `anthropic-api-key` | Processor CF |
-| `msal-token-cache` | Processor CF + renew CF — MSAL refresh token |
-| `inbox-db-password` | Processor CF — Cloud SQL password |
+| `msal-token-cache` | Processor CF + renew CF + `inbox-api` — MSAL refresh token |
+| `inbox-db-password` | Processor CF + `inbox-api` — Cloud SQL password |
 | `ntfy-token` | Processor CF — ntfy server access token |
 | `webhook-label-token` | Processor CF + webhook CF — authenticates `/label` action button callbacks |
+| `grafana-otlp-endpoint`, `grafana-otlp-token` | Processor + webhook CFs — OTel metrics/traces export to Grafana Cloud |
+| `asana-api-key` | Processor CF — Asana task creation |
+| `hubspot-token` | Processor CF — HubSpot contact upsert + email logging |
+| `google-calendar-client-id`, `google-calendar-client-secret`, `google-calendar-refresh-token` | Processor CF — Google Calendar responses |
+| `hf-token` | Processor CF — Hugging Face auth for bge model download |
+| `search-token` | `inbox-api` — authenticates API requests |
+| `graph-subscription-id` | Renew CF — subscription to renew/self-heal |
 
 ## Migration phases
 
