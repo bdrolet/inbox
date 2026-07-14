@@ -230,7 +230,10 @@ in `America/New_York`.
     untagged, and held (`keep_until` in future); files and strips an elapsed `keep_until`.
   - `keep_until` parsing: bare date vs datetime, ET boundary behavior, unparseable → held.
   - Redirector: UUID → 302 to resolved webLink; unknown UUID → 404; Graph failure → 502.
-- **Integration / local E2E:**
+- **Integration / local E2E — via the `verifying-pr-locally` skill.** After the change is
+  implemented, open the PR with the `pr-open` skill, then run `verifying-pr-locally` against
+  the branch. That skill drives the API + real Graph and posts results to the open PR. The
+  E2E checks it should exercise:
   - Run the pipeline against a real test email — assert it is classified, tagged, task created
     with a redirector link, and **not** moved.
   - Invoke the sweep locally against the test mailbox: a tagged message moves to the mapped
@@ -238,13 +241,14 @@ in `America/New_York`.
     untagged message stays.
   - Redirector: hit `/r/{uuid}` before and after a sweep move; both resolve to a working
     Outlook link.
-- **Immutable-ID subscription:** verify a freshly-arrived notification's `resourceData.id` is
-  in immutable format and that a fetch/move round-trip on it succeeds.
+  - Verify a freshly-arrived notification's `resourceData.id` is in immutable format and that
+    a fetch/move round-trip on it succeeds.
 
 ## Rollout
 
 1. Land code (immutable-ID headers, `folder_for_category`, handler changes, redirector, sweep
-   CF) behind the normal PR flow.
+   CF) behind the normal PR flow: open the PR with the `pr-open` skill, verify with the
+   `verifying-pr-locally` skill, then merge.
 2. Apply Terraform (new topic, scheduler, sweep CF).
 3. Recreate the Graph subscription with the immutable-ID header; update
    `graph_subscription_id`.
