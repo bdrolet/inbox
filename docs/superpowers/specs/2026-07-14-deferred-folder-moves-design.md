@@ -82,7 +82,7 @@ Email arrives
 ... message sits in Inbox all day, tagged, with a live task ...
 
 5:00 AM ET
-  → Cloud Scheduler → Pub/Sub (inbox-sweep) → sweep CF
+  → Cloud Scheduler → HTTP POST → sweep CF
       → list Inbox messages (GET /me/mailFolders/inbox/messages?$select=id,categories)
       → for each message:
            - keep_until tag present and not elapsed  → skip (held in Inbox)
@@ -167,10 +167,12 @@ GET /r/{message_uuid}  →  302 to the message's current Outlook webLink
 
 ### 5. Morning sweep (new CF `functions/sweep/`, Terraform)
 
-A new scheduled Cloud Function, mirroring the existing `inbox-renew` scheduler→CF pattern:
+A new HTTP-triggered Cloud Function, mirroring the existing `inbox-renew` scheduler→CF pattern
+(a new `sweep` entry point in `main.py`, deployed as its own `inbox-sweep` CF from the repo
+bundle, the same way `calendar_action` and `label` are separate CFs):
 
-- **Cloud Scheduler** cron `0 5 * * *`, timezone `America/New_York` → publishes to a new
-  Pub/Sub topic `inbox-sweep` → sweep CF.
+- **Cloud Scheduler** cron `0 5 * * *`, timezone `America/New_York`, POSTs directly to the
+  sweep CF's URL (no Pub/Sub topic needed — the sweep carries no message payload).
 - Sweep logic:
   1. List Inbox messages: `GET /me/mailFolders/inbox/messages?$select=id,categories` (paged).
   2. For each message, inspect its `categories`:
@@ -205,9 +207,9 @@ in `America/New_York`.
 
 ### 6. Terraform
 
-- New Pub/Sub topic `inbox-sweep`, Cloud Scheduler job (`0 5 * * *`, `America/New_York`),
-  sweep Cloud Function + its service account and IAM (Secret Manager for Graph creds; the
-  sweep needs no DB access).
+- New HTTP-triggered `inbox-sweep` Cloud Function, Cloud Scheduler job (`0 5 * * *`,
+  `America/New_York`) POSTing to it, and scheduler invoker IAM (Secret Manager for Graph
+  creds; the sweep needs no DB access).
 - Update `graph_subscription_id` in `terraform.tfvars` after the subscription is recreated
   with the immutable-ID header.
 
