@@ -6,7 +6,9 @@ See `docs/inbox-architecture.md` for the full design and `docs/v1-implementation
 
 ## Project state
 
-**Phases 1–4 complete** — full classification pipeline live: emails received via Graph webhooks, embedded with bge-small, classified by Claude Sonnet with retrieval-augmented context, folder-moved in Outlook, tagged with Outlook color categories, and urgent messages push to phone via ntfy with action buttons that feed corrections back to the vector store.
+**Phases 1–4 complete** — full classification pipeline live: emails received via Graph webhooks, embedded with bge-small, classified by Claude Sonnet with retrieval-augmented context, tagged with Outlook color categories, and urgent messages push to phone via ntfy with action buttons that feed corrections back to the vector store.
+
+**Deferred folder moves (shipped):** classified mail is tagged immediately but stays in the Inbox during the day. The `inbox-sweep` Cloud Function (Cloud Scheduler, 5 AM America/New_York) files each message into the folder implied by its **current** Outlook category tag — so a correction made during the day is honored at move time. The sweep is stateless ("tagged + in Inbox → file by tag"); a `keep_until:<YYYY-MM-DD[THH:MM]>` Outlook category holds a message in the Inbox past the sweep. Asana "Open in Outlook" links are `inbox-api` redirector URLs (`/r/{uuid}`) that resolve the live webLink via the message's **immutable** Graph ID, so links survive the move. See `docs/superpowers/specs/2026-07-14-deferred-folder-moves-design.md`.
 
 Ready to start **Phase 5** (bootstrap labels, decommission Cloud Run Job).
 
@@ -26,7 +28,8 @@ This overrides the default "commit or push only when asked" behavior for code ch
 |---|---|
 | **GCP project** | `bens-project-462804`, `us-central1` |
 | **Worker** | Cloud Function `inbox-process` (Pub/Sub event trigger, scale-to-zero) |
-| **API** | Cloud Run service `inbox-api` (FastAPI) — email search + outbound email endpoints |
+| **Sweep** | Cloud Function `inbox-sweep` (HTTP, Cloud Scheduler `0 5 * * *` America/New_York) — defers folder moves; files Inbox mail by its current category tag |
+| **API** | Cloud Run service `inbox-api` (FastAPI) — email search + outbound email + `/r/{uuid}` redirector |
 | **Database** | Cloud SQL Postgres 16 + pgvector, `bens-project-462804:us-central1:inbox`, db `app` |
 | **Email source** | Microsoft Graph API (Outlook/Office 365), MSAL auth |
 | **LLM** | Claude Sonnet via Anthropic API |
@@ -46,8 +49,8 @@ functions/        Cloud Function entry points (standalone, minimal deps)
   webhook/        Receives Graph notifications → publishes to Pub/Sub
   renew/          Renews Graph subscription every 2 days
 api/              FastAPI app (Cloud Run service inbox-api)
-  routers/        search.py (mailbox/group/DB search), emails.py (draft, attach, send)
-main.py           Processor Cloud Function entry point (Pub/Sub event trigger)
+  routers/        search.py (mailbox/group/DB search), emails.py (draft, attach, send), redirect.py (/r/{uuid} → live webLink)
+main.py           Processor + sweep Cloud Function entry points (Pub/Sub event trigger; sweep is HTTP)
 scripts/          Entry points and one-off jobs
   analyze_emails.py  Existing Cloud Run Job (kept until Phase 5)
   migrate_db.py   One-shot schema migration
@@ -85,20 +88,20 @@ Headless mode is triggered by the presence of `GCP_PROJECT_ID` env var. The proc
 
 ## Graph subscription
 
-The Graph change-notification subscription points at the webhook Cloud Function URL. It expires every ~3 days and is renewed automatically by the `inbox-renew` Cloud Function via Cloud Scheduler.
+The Graph change-notification subscription points at the webhook Cloud Function URL. It expires every ~3 days and is renewed automatically by the `inbox-renew` Cloud Function via Cloud Scheduler. It is registered with `Prefer: IdType="ImmutableId"`, so `resourceData.id` in notifications is an **immutable** Graph ID (stable across folder moves).
 
 Webhook CF URL: `https://inbox-webhook-aizbgjlava-uc.a.run.app`
 
-Active subscription ID: `f58b30e4-4090-433a-87cc-fbe1f87f574a` (set in `terraform/terraform.tfvars` as `graph_subscription_id`). Renewal runs automatically every 2 days via `inbox-renew` CF + Cloud Scheduler.
+Active subscription ID: `a250d513-059e-4624-9121-7dca3954c4c9`. **The authoritative value is the `graph-subscription-id` Secret Manager secret**, which the `inbox-renew` CF reads, renews every 2 days, and rewrites on self-heal — Terraform seeds it once but never overwrites it (`lifecycle.ignore_changes` in `terraform/secrets.tf`). The `terraform.tfvars` / GitHub Actions `GRAPH_SUBSCRIPTION_ID` values only matter for the initial seed of a fresh secret; keep them roughly in sync for disaster recovery.
 
-To re-register (e.g. after subscription expires):
+To re-register (e.g. after subscription expires — `register()` sends the immutable-ID header):
 ```python
 from clients.azure import GraphEmailClient
 from clients.graph_subscriptions import register
 c = GraphEmailClient()
 c.authenticate_headless()  # or authenticate_interactive() locally
 result = register(c, "https://inbox-webhook-aizbgjlava-uc.a.run.app")
-print(result["id"])  # update graph_subscription_id in terraform.tfvars
+print(result["id"])  # write to the graph-subscription-id secret (authoritative); update GRAPH_SUBSCRIPTION_ID for DR
 ```
 
 ## Local development
@@ -155,7 +158,8 @@ CLOUD_SQL_CONNECTION_NAME=bens-project-462804:us-central1:inbox \
 | 1 | **Complete** | DB schema, processor CF, webhook CF, Cloud SQL, Pub/Sub, Graph subscription |
 | 2 | **Complete** | bge-small embeddings + pgvector retrieval |
 | 3 | **Complete** | Claude Sonnet, 5-category + P0–P3 importance, retrieval-augmented prompt |
-| 4 | **Complete** | ntfy push notifications, Outlook folder moves + color-category tagging, human feedback loop |
+| 4 | **Complete** | ntfy push notifications, Outlook color-category tagging, human feedback loop |
+| — | **Complete** | Deferred folder moves: `inbox-sweep` CF (5 AM ET) files by tag, `keep_until` holds, immutable IDs + `/r/{uuid}` redirector |
 | 5 | **Next** | Bootstrap labels, decommission Cloud Run Job |
 
 ## Known issues / gotchas
