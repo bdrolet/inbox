@@ -95,6 +95,7 @@ def upsert_contact(
                 continue
             logger.warning("HubSpot upsert_contact gave up for %s: %s", sender_email, e)
             return None
+    return None
 
 
 def log_email(
