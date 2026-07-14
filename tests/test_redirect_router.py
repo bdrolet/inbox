@@ -53,7 +53,9 @@ def test_known_uuid_redirects(client):
 
 
 def test_unknown_uuid_404(client):
-    r = client.get("/r/missing")
+    # a well-formed UUID that the repo doesn't know -> exercises the None-row 404
+    # branch (distinct from the malformed-uuid validation 404 below)
+    r = client.get("/r/11111111-1111-1111-1111-111111111111")
     assert r.status_code == 404
 
 
