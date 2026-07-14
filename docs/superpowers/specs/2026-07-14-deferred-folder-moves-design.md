@@ -135,7 +135,7 @@ classify-time-recorded-intent approach.
   pass a `folder`. They classify-time work is unchanged otherwise: calendar-invite detection,
   summary, deadline, Asana task, reply draft, ntfy.
 - The category → folder mapping moves out of the individual handlers into a single shared
-  function, `services/archiving.folder_for_category(category) -> str | None`:
+  function, `services/sweep_rules.folder_for_category(category) -> str | None`:
   `IGNORE`/`REFERENCE` → `Archive`, `RESPOND` → `reply_required`, `REVIEW` → `review`,
   `URGENT` → `None` (no move). This is the one source of truth, used only by the sweep.
 - Calendar-invite detection and draft creation now run against the still-in-Inbox message —
