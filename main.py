@@ -110,3 +110,21 @@ def label(cloud_event: CloudEvent) -> None:
         logger.info("Label applied — message_id=%s", payload["message_id"])
     finally:
         otel.flush()
+
+
+@functions_framework.http
+def sweep(request):
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from clients.graph import get_graph_client
+    from services.sweep import run_sweep
+
+    otel.flush()
+    try:
+        counts = run_sweep(get_graph_client(), datetime.now(ZoneInfo("America/New_York")))
+        for action, n in counts.items():
+            otel.sweep_actions.add(n, {"action": action})
+        return (counts, 200)
+    finally:
+        otel.flush()

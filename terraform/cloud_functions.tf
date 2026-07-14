@@ -223,6 +223,7 @@ resource "google_cloudfunctions2_function" "process" {
       OTEL_BSP_MAX_QUEUE_SIZE   = "16384"
       OTEL_BSP_SCHEDULE_DELAY   = "2000"
       OTEL_BSP_EXPORT_TIMEOUT   = "30000"
+      REDIRECTOR_BASE_URL       = google_cloud_run_v2_service.api.uri
     }
     secret_environment_variables {
       key        = "POSTGRES_PASSWORD"
@@ -481,4 +482,68 @@ resource "google_cloudfunctions2_function" "label" {
     google_project_service.apis,
     google_sql_database_instance.inbox,
   ]
+}
+
+# ---------------------------------------------------------------------------
+# Sweep function — morning sweep that files deferred emails, HTTP-triggered
+# by Cloud Scheduler at 5 AM ET
+# ---------------------------------------------------------------------------
+resource "google_cloudfunctions2_function" "sweep" {
+  name     = "inbox-sweep"
+  location = var.region
+
+  build_config {
+    runtime     = "python311"
+    entry_point = "sweep"
+    source {
+      storage_source {
+        bucket = google_storage_bucket.cf_source.name
+        object = google_storage_bucket_object.process_source.name
+      }
+    }
+  }
+
+  service_config {
+    service_account_email = google_service_account.process_cf.email
+    min_instance_count    = 0
+    max_instance_count    = 3
+    timeout_seconds       = 540
+    available_memory      = "512Mi"
+    environment_variables = {
+      GCP_PROJECT_ID   = var.project_id
+      MSAL_SECRET_NAME = "msal-token-cache"
+    }
+    secret_environment_variables {
+      key        = "CLIENT_ID"
+      project_id = var.project_id
+      secret     = google_secret_manager_secret.secrets["client-id"].secret_id
+      version    = "latest"
+    }
+    secret_environment_variables {
+      key        = "CLIENT_SECRET"
+      project_id = var.project_id
+      secret     = google_secret_manager_secret.secrets["client-secret"].secret_id
+      version    = "latest"
+    }
+    secret_environment_variables {
+      key        = "TENANT_ID"
+      project_id = var.project_id
+      secret     = google_secret_manager_secret.secrets["tenant-id"].secret_id
+      version    = "latest"
+    }
+    secret_environment_variables {
+      key        = "GRAFANA_OTLP_ENDPOINT"
+      project_id = var.project_id
+      secret     = google_secret_manager_secret.secrets["grafana-otlp-endpoint"].secret_id
+      version    = "latest"
+    }
+    secret_environment_variables {
+      key        = "GRAFANA_OTLP_TOKEN"
+      project_id = var.project_id
+      secret     = google_secret_manager_secret.secrets["grafana-otlp-token"].secret_id
+      version    = "latest"
+    }
+  }
+
+  depends_on = [google_project_service.apis]
 }

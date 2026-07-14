@@ -42,3 +42,42 @@ resource "google_cloud_scheduler_job" "inbox_renew" {
 
   depends_on = [google_project_service.apis]
 }
+
+# ---------------------------------------------------------------------------
+# Morning sweep — files deferred emails at 5 AM ET
+# ---------------------------------------------------------------------------
+resource "google_cloudfunctions2_function_iam_member" "sweep_invoker" {
+  project        = var.project_id
+  location       = var.region
+  cloud_function = google_cloudfunctions2_function.sweep.name
+  role           = "roles/cloudfunctions.invoker"
+  member         = "serviceAccount:${google_service_account.scheduler_sa.email}"
+}
+
+# Gen2 CFs run on Cloud Run — also need the Cloud Run invoker role
+resource "google_cloud_run_v2_service_iam_member" "sweep_invoker" {
+  project  = var.project_id
+  location = var.region
+  name     = google_cloudfunctions2_function.sweep.name
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${google_service_account.scheduler_sa.email}"
+}
+
+resource "google_cloud_scheduler_job" "inbox_sweep" {
+  name      = "inbox-morning-sweep"
+  schedule  = "0 5 * * *"
+  time_zone = "America/New_York"
+
+  http_target {
+    http_method = "POST"
+    uri         = google_cloudfunctions2_function.sweep.service_config[0].uri
+    body        = base64encode("{}")
+    headers     = { "Content-Type" = "application/json" }
+
+    oidc_token {
+      service_account_email = google_service_account.scheduler_sa.email
+    }
+  }
+
+  depends_on = [google_project_service.apis]
+}
