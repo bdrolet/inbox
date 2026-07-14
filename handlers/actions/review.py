@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 
 
 def handle(classification: Classification, msg: Message) -> None:
-    web_link, summary, due_date, invite = prepare(msg, classification, folder="review")
+    web_link, summary, due_date, invite = prepare(msg, classification)
 
     try:
         task = asana.create_task(

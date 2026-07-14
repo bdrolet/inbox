@@ -1,6 +1,6 @@
 import logging
 
-from handlers.actions import ignore, reference, respond, review, urgent
+from handlers.actions import respond, review, urgent
 from models.message import Message
 from models.types import Category, Classification
 from services import archiving
@@ -11,8 +11,6 @@ _HANDLERS = {
     Category.URGENT: urgent.handle,
     Category.RESPOND: respond.handle,
     Category.REVIEW: review.handle,
-    Category.REFERENCE: reference.handle,
-    Category.IGNORE: ignore.handle,
 }
 
 
