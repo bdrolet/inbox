@@ -28,6 +28,11 @@ from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
+# force=True installs a fresh stderr handler even though the gen2/gunicorn runtime
+# configures the root logger before this module imports (otherwise basicConfig
+# no-ops and app logs never reach Cloud Logging). See docs/otel-metrics-in-cloud-functions.md.
+logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s", force=True)
+
 logger = logging.getLogger(__name__)
 
 _publisher: pubsub_v1.PublisherClient | None = None

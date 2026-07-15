@@ -26,6 +26,11 @@ import requests
 from google.api_core import exceptions as gcp_exceptions
 from google.cloud import secretmanager
 
+# force=True installs a fresh stderr handler even though the gen2/gunicorn runtime
+# configures the root logger before this module imports (otherwise basicConfig
+# no-ops and app logs never reach Cloud Logging). See docs/otel-metrics-in-cloud-functions.md.
+logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s", force=True)
+
 logger = logging.getLogger(__name__)
 
 
