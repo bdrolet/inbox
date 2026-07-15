@@ -27,7 +27,13 @@ import base64
 import json
 import logging
 
-logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
+# force=True installs a fresh stderr StreamHandler at INFO even if the Cloud
+# Functions/gunicorn runtime already configured the root logger before this module
+# was imported. Without it, basicConfig() no-ops in production and app logs never
+# reach stderr -> Cloud Logging (they only go to the OTLP handler added by
+# otel.setup_telemetry below). See docs: this is why sweep/processor logger.info
+# lines were absent from Cloud Logging while direct stderr writes (e.g. tqdm) showed.
+logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s", force=True)
 
 import functions_framework
 from cloudevents.http import CloudEvent
