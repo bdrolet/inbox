@@ -23,6 +23,7 @@ import handlers.actions.dispatch as dispatch_mod  # noqa: E402
 import handlers.actions.respond as respond  # noqa: E402
 import handlers.actions.review as review  # noqa: E402
 import handlers.actions.urgent as urgent  # noqa: E402
+from clients import pubsub  # noqa: E402
 from models.types import CalendarInvite, Category, Classification, Importance  # noqa: E402
 from services import email_events, labeling  # noqa: E402
 
@@ -173,6 +174,33 @@ def test_urgent_push_clicks_through_to_the_email(monkeypatch):
     urgent.handle(_classification(Category.URGENT), msg)
     # task is created async by the tasks service — the push opens the email
     assert notified["click_url"] == "https://outlook.example/m1"
+
+
+def test_pubsub_publish_blocks_on_result(monkeypatch):
+    calls = {}
+
+    class FakeFuture:
+        def result(self, timeout=None):
+            calls["result_timeout"] = timeout
+            return "msg-id"
+
+    class FakePublisher:
+        def topic_path(self, project, topic):
+            return f"projects/{project}/topics/{topic}"
+
+        def publish(self, path, data, **attrs):
+            calls["path"] = path
+            calls["data"] = data
+            return FakeFuture()
+
+    monkeypatch.setenv("GCP_PROJECT_ID", "proj")
+    monkeypatch.setattr(pubsub, "_publisher", FakePublisher())
+    monkeypatch.setattr(pubsub, "_topic_paths", {})
+
+    pubsub.publish("email-events", {"event": "email_classified"})
+
+    assert calls["path"] == "projects/proj/topics/email-events"
+    assert calls["result_timeout"] is not None  # future awaited — fire-and-forget drops messages
 
 
 def test_apply_label_publishes_label_applied(monkeypatch):

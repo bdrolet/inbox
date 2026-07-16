@@ -26,8 +26,13 @@ def _client(topic: str) -> tuple[pubsub_v1.PublisherClient, str]:
 
 
 def publish(topic: str, event: dict) -> None:
-    """Publish a JSON-encoded event to the named topic with trace context."""
+    """Publish a JSON-encoded event to the named topic with trace context.
+
+    Blocks until the broker acks — the publisher batches on a background
+    thread, and a scale-to-zero Cloud Function (or short-lived process)
+    exiting before the flush silently drops the message.
+    """
     publisher, path = _client(topic)
     carrier: dict = {}
     inject(carrier)
-    publisher.publish(path, json.dumps(event).encode(), **carrier)
+    publisher.publish(path, json.dumps(event).encode(), **carrier).result(timeout=30)
