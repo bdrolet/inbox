@@ -97,7 +97,7 @@ variable "hf_token" {
 }
 
 variable "asana_api_key" {
-  description = "Asana Personal Access Token — used by inbox-process CF to create review tasks"
+  description = "Asana personal access token — stored in Secret Manager for the tasks repo (github.com/bdrolet/tasks); inbox no longer reads it"
   type        = string
   sensitive   = true
   default     = ""

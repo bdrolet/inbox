@@ -35,6 +35,6 @@ Run from the repo root (`/Users/ben/src/inbox`). All required env vars are read 
 
 **Gotchas:**
 - Graph auth uses interactive device-code flow locally (token cached at `~/.inbox-token-cache.json`). Re-auth only needed if the cache expires.
-- The pipeline inserts a real DB record and publishes a real `email_classified` event — use a test email you send to yourself.
+- The pipeline inserts a real DB record and exercises the full fetch → classify → tag → dispatch path against a real email — use a test email you send to yourself. The `email_classified` **publish itself fails soft locally**: `clients/pubsub.py` requires `GCP_PROJECT_ID`, which local runs deliberately leave unset (setting it flips Graph auth to headless mode in `clients/graph.py`). Expect a logged `email_classified publish failed for <message_id>` — that's expected, not a bug. Real publish verification happens post-deploy (`/tracing-inbox-email` or live Cloud Function logs).
 - If the email was already processed, the pipeline skips it (duplicate check). Use `--message-id` with a fresh email ID or send a new test email.
 - ntfy notifications fire if `NTFY_TOPIC` and `NTFY_TOKEN` are set in `.env` — omit them to skip.

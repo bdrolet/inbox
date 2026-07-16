@@ -8,7 +8,9 @@ See `docs/inbox-architecture.md` for the full design and `docs/v1-implementation
 
 **Phases 1–4 complete** — full classification pipeline live: emails received via Graph webhooks, embedded with bge-small, classified by Claude Sonnet with retrieval-augmented context, tagged with Outlook color categories, and urgent messages push to phone via ntfy with action buttons that feed corrections back to the vector store.
 
-**Deferred folder moves (shipped):** classified mail is tagged immediately but stays in the Inbox during the day. The `inbox-sweep` Cloud Function (Cloud Scheduler, 5 AM America/New_York) files each message into the folder implied by its **current** Outlook category tag — so a correction made during the day is honored at move time. The sweep is stateless ("tagged + in Inbox → file by tag"); a `keep_until:<YYYY-MM-DD[THH:MM]>` Outlook category holds a message in the Inbox past the sweep. Asana "Open in Outlook" links are `inbox-api` redirector URLs (`/r/{uuid}`) that resolve the live webLink via the message's **immutable** Graph ID, so links survive the move. See `docs/superpowers/specs/2026-07-14-deferred-folder-moves-design.md`.
+**Deferred folder moves (shipped):** classified mail is tagged immediately but stays in the Inbox during the day. The `inbox-sweep` Cloud Function (Cloud Scheduler, 5 AM America/New_York) files each message into the folder implied by its **current** Outlook category tag — so a correction made during the day is honored at move time. The sweep is stateless ("tagged + in Inbox → file by tag"); a `keep_until:<YYYY-MM-DD[THH:MM]>` Outlook category holds a message in the Inbox past the sweep. "Open in Outlook" links are `inbox-api` redirector URLs (`/r/{uuid}`) that resolve the live webLink via the message's **immutable** Graph ID, so links survive the move. See `docs/superpowers/specs/2026-07-14-deferred-folder-moves-design.md`.
+
+**Tasks-service extraction (shipped):** inbox owns classification only — it no longer talks to Asana. For every processed email (all five categories) the dispatch handler publishes one `email_classified` event, and the labeling service publishes `label_applied` feedback events (human confirmations/corrections), both to the inbox-owned `email-events` Pub/Sub topic. The separate `tasks` repo (github.com/bdrolet/tasks) subscribes to that topic and owns all Asana task policy, enrichment (summaries, deadlines), and creation. Urgent ntfy pushes still click through to the source email via the `/r/{uuid}` redirector; the Asana task itself now shows up moments later, created by the tasks service. See `docs/superpowers/plans/2026-07-16-email-events-extraction.md`.
 
 Ready to start **Phase 5** (bootstrap labels, decommission Cloud Run Job).
 
@@ -34,6 +36,7 @@ This overrides the default "commit or push only when asked" behavior for code ch
 | **Email source** | Microsoft Graph API (Outlook/Office 365), MSAL auth |
 | **LLM** | Claude Sonnet via Anthropic API |
 | **Trigger** | Graph change notifications → webhook CF → Pub/Sub → processor CF |
+| **Domain events** | Pub/Sub topic `email-events` (inbox-owned) — `email_classified` + `label_applied` events; consumed by the separate `tasks` repo (github.com/bdrolet/tasks), which owns Asana |
 | **Notifications** | Self-hosted ntfy at `ntfy.drolet.ai`, topic `inbox` |
 | **GCP infra** | `terraform/` (Cloud Functions, Pub/Sub, Cloud SQL, Scheduler, Secrets, IAM) |
 
@@ -144,7 +147,7 @@ CLOUD_SQL_CONNECTION_NAME=bens-project-462804:us-central1:inbox \
 | `ntfy-token` | Processor CF — ntfy server access token |
 | `webhook-label-token` | Processor CF + webhook CF — authenticates `/label` action button callbacks |
 | `grafana-otlp-endpoint`, `grafana-otlp-token` | Processor + webhook CFs — OTel metrics/traces export to Grafana Cloud |
-| `asana-api-key` | Processor CF — Asana task creation |
+| `asana-api-key` | Kept for the tasks repo (github.com/bdrolet/tasks) — inbox no longer reads it |
 | `hubspot-token` | Processor CF — HubSpot contact upsert + email logging |
 | `google-calendar-client-id`, `google-calendar-client-secret`, `google-calendar-refresh-token` | Processor CF — Google Calendar responses |
 | `hf-token` | Processor CF — Hugging Face auth for bge model download |
