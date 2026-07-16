@@ -1,11 +1,20 @@
+import sys
+import types
 from datetime import UTC, datetime
 
-import handlers.actions.dispatch as dispatch_mod
-import handlers.actions.respond as respond
-import handlers.actions.review as review
-import handlers.actions.urgent as urgent
-from models.types import CalendarInvite, Category, Classification, Importance
-from services import email_events
+# Stub the heavy DB module the handler chain imports at load time
+# (handlers.actions._shared -> services.calendar_invite -> clients.db -> psycopg,
+# which needs libpq and isn't available on this machine).
+_fake_db = types.ModuleType("clients.db")
+_fake_db.get_conn = lambda: None
+sys.modules.setdefault("clients.db", _fake_db)
+
+import handlers.actions.dispatch as dispatch_mod  # noqa: E402
+import handlers.actions.respond as respond  # noqa: E402
+import handlers.actions.review as review  # noqa: E402
+import handlers.actions.urgent as urgent  # noqa: E402
+from models.types import CalendarInvite, Category, Classification, Importance  # noqa: E402
+from services import email_events  # noqa: E402
 
 
 def _classification(category=Category.REVIEW) -> Classification:
