@@ -16,7 +16,7 @@ python_version = "3.13"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-module = ["repo.*", "clients.db", "clients.azure.*", "clients.azure"]
+module = ["repo.*", "clients.db", "clients.pubsub", "clients.azure.*", "clients.azure"]
 ignore_errors = true
 
 [tool.pytest.ini_options]
