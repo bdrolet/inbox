@@ -16,7 +16,6 @@ from clients.graph import get_graph_client
 from handlers.actions.dispatch import dispatch
 from repo import classifications, messages, senders
 from repo.embeddings import retrieve_neighbors
-from services import asana_tag_cache as tag_cache_svc
 from services.classification import PROMPT_VERSION, aggregate_neighbors, build_prompt
 from services.embedding import embed_and_store, text_for_embedding
 from services.ingestion import fetch, normalize
@@ -112,11 +111,6 @@ def run(notification: dict, model, context=None) -> None:
                     span.set_attribute("confidence", classification.confidence)
                     span.set_attribute("model", _MODEL_NAME)
                 otel.stage_duration.record((time.monotonic() - t0) * 1000, {"stage": "classify"})
-
-                try:
-                    classification.tag_gids = tag_cache_svc.resolve_gids(classification.tags)
-                except Exception:
-                    logger.exception("Tag GID resolution failed for message_id=%s", msg_id)
 
                 classifications.insert(
                     conn,
