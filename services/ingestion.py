@@ -37,6 +37,8 @@ def normalize(email: Email, raw: dict | None = None) -> Message:
         sender=email.from_email or "",
         sender_display=email.from_name or "",
         subject=(email.subject or "").removeprefix("[LOCAL-TEST] "),
+        to=[r.get("address", "") for r in email.to_recipients if r.get("address")],
+        cc=[r.get("address", "") for r in email.cc_recipients if r.get("address")],
         body=email.get_body_text(),
         body_html=email.body_content if email.body_type == "html" else None,
         received_at=received_at,
