@@ -1,34 +1,18 @@
 import logging
 
-import clients.asana as asana
 import clients.ntfy as ntfy
 from handlers.actions._shared import prepare
 from models.message import Message
 from models.types import Classification
+from services import email_events
+from services.links import redirector_url
 
 logger = logging.getLogger(__name__)
 
 
-def handle(classification: Classification, msg: Message) -> None:
-    web_link, summary, due_date, invite = prepare(msg, classification)
-
-    task_url: str | None = None
-    try:
-        task = asana.create_task(
-            msg,
-            classification,
-            web_link=web_link,
-            due_date=due_date,
-            summary=summary,
-            invite=invite,
-        )
-        if task:
-            task_url = task.permalink_url
-        logger.info(
-            "Urgent task created: gid=%s for message_id=%s", task.gid if task else None, msg["id"]
-        )
-    except Exception:
-        logger.exception("Urgent task creation failed for message_id=%s", msg["id"])
+def handle(classification: Classification, msg: Message) -> dict:
+    invite = prepare(msg)
+    points, links = email_events.invite_extras(str(msg["id"]), invite)
 
     ntfy.notify(
         message_id=str(msg["id"] or ""),
@@ -36,6 +20,9 @@ def handle(classification: Classification, msg: Message) -> None:
         sender=msg["sender"],
         reasoning=classification.reasoning,
         importance=classification.importance.value,
-        task_url=task_url,
+        # Task is created asynchronously by the tasks service — tapping the
+        # push opens the email itself (stable redirector link) instead.
+        click_url=redirector_url(str(msg.get("id") or "")) or msg.get("web_link"),
     )
     logger.info("ntfy notification sent for message_id=%s", msg["id"])
+    return {"seed_key_points": points or None, "seed_links": links or None}

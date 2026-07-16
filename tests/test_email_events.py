@@ -1,5 +1,9 @@
 from datetime import UTC, datetime
 
+import handlers.actions.dispatch as dispatch_mod
+import handlers.actions.respond as respond
+import handlers.actions.review as review
+import handlers.actions.urgent as urgent
 from models.types import CalendarInvite, Category, Classification, Importance
 from services import email_events
 
@@ -84,3 +88,69 @@ def test_invite_extras_builds_points_and_rsvp_links(monkeypatch):
 
 def test_invite_extras_none_invite():
     assert email_events.invite_extras("m1", None) == ([], [])
+
+
+def test_dispatch_publishes_for_categories_without_handlers(monkeypatch):
+    monkeypatch.delenv("REDIRECTOR_BASE_URL", raising=False)
+    monkeypatch.setattr(dispatch_mod.archiving, "apply_tags", lambda m, c: None)
+    published = []
+    monkeypatch.setattr(email_events, "publish", lambda e: published.append(e))
+
+    dispatch_mod.dispatch(_classification(Category.REFERENCE), _msg())
+    dispatch_mod.dispatch(_classification(Category.IGNORE), _msg())
+
+    assert [e["category"] for e in published] == ["reference", "ignore"]
+
+
+def test_dispatch_publishes_even_when_handler_raises(monkeypatch):
+    monkeypatch.delenv("REDIRECTOR_BASE_URL", raising=False)
+    monkeypatch.setattr(dispatch_mod.archiving, "apply_tags", lambda m, c: None)
+    monkeypatch.setattr(review, "prepare", lambda msg: 1 / 0)
+    published = []
+    monkeypatch.setattr(email_events, "publish", lambda e: published.append(e))
+
+    dispatch_mod.dispatch(_classification(Category.REVIEW), _msg())
+
+    assert len(published) == 1
+    assert published[0]["category"] == "review"
+    assert published[0]["seed_key_points"] is None
+
+
+def test_review_returns_invite_seeds(monkeypatch):
+    monkeypatch.setenv("WEBHOOK_URL", "https://inbox-webhook.example")
+    monkeypatch.setenv("WEBHOOK_LABEL_TOKEN", "tok")
+    monkeypatch.setattr(review, "prepare", lambda msg: _invite())
+
+    extras = review.handle(_classification(), _msg())
+
+    assert any(p.startswith("Calendar invite: Standup") for p in extras["seed_key_points"])
+    labels = [label for _, label in extras["seed_links"]]
+    assert "Join Zoom" in labels and "RSVP: Accept" in labels
+    accept_url = next(url for url, label in extras["seed_links"] if label == "RSVP: Accept")
+    assert accept_url.startswith("https://inbox-webhook.example/calendar?id=m1&action=accept")
+
+
+def test_respond_returns_draft_link(monkeypatch):
+    monkeypatch.setattr(respond, "prepare", lambda msg: None)
+    monkeypatch.setattr(respond.draft_svc, "generate", lambda msg: "draft text")
+
+    class FakeGraph:
+        def create_reply_draft(self, external_id, text):
+            return "https://outlook.example/draft-1"
+
+    monkeypatch.setattr(respond, "get_graph_client", lambda: FakeGraph())
+
+    extras = respond.handle(_classification(Category.RESPOND), _msg())
+    assert extras["draft_link"] == "https://outlook.example/draft-1"
+
+
+def test_urgent_push_clicks_through_to_the_email(monkeypatch):
+    monkeypatch.delenv("REDIRECTOR_BASE_URL", raising=False)
+    monkeypatch.setattr(urgent, "prepare", lambda msg: None)
+    notified = {}
+    monkeypatch.setattr(urgent.ntfy, "notify", lambda **kw: notified.update(kw))
+
+    msg = _msg() | {"web_link": "https://outlook.example/m1"}
+    urgent.handle(_classification(Category.URGENT), msg)
+    # task is created async by the tasks service — the push opens the email
+    assert notified["click_url"] == "https://outlook.example/m1"

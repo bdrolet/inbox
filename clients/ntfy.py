@@ -14,7 +14,7 @@ def notify(
     sender: str,
     reasoning: str,
     importance: str,
-    task_url: str | None = None,
+    click_url: str | None = None,
 ) -> None:
     if not NTFY_TOPIC:
         return
@@ -52,8 +52,8 @@ def notify(
             },
         ],
     }
-    if task_url:
-        payload["click"] = task_url
+    if click_url:
+        payload["click"] = click_url
     httpx.post(
         f"{NTFY_BASE_URL}/",
         headers=headers,
