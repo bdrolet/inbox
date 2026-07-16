@@ -97,6 +97,14 @@ resource "google_secret_manager_secret_iam_member" "process_cf_google_calendar" 
   member    = "serviceAccount:${google_service_account.process_cf.email}"
 }
 
+# Publish email_classified / label_applied domain events (consumed by the
+# tasks repo — github.com/bdrolet/tasks)
+resource "google_pubsub_topic_iam_member" "process_cf_email_events_publisher" {
+  topic  = google_pubsub_topic.email_events.name
+  role   = "roles/pubsub.publisher"
+  member = "serviceAccount:${google_service_account.process_cf.email}"
+}
+
 # ---------------------------------------------------------------------------
 # Webhook Cloud Function service account
 # ---------------------------------------------------------------------------
