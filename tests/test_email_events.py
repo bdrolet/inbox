@@ -9,12 +9,22 @@ _fake_db = types.ModuleType("clients.db")
 _fake_db.get_conn = lambda: None
 sys.modules.setdefault("clients.db", _fake_db)
 
+# Stub repo modules to avoid psycopg import
+_fake_repo_classifications = types.ModuleType("repo.classifications")
+_fake_repo_classifications.insert = lambda conn, **kw: None
+sys.modules.setdefault("repo.classifications", _fake_repo_classifications)
+
+_fake_repo_embeddings = types.ModuleType("repo.embeddings")
+_fake_repo_embeddings.set_current_label = lambda conn, mid, label: None
+_fake_repo_embeddings.set_current_importance = lambda conn, mid, importance: None
+sys.modules.setdefault("repo.embeddings", _fake_repo_embeddings)
+
 import handlers.actions.dispatch as dispatch_mod  # noqa: E402
 import handlers.actions.respond as respond  # noqa: E402
 import handlers.actions.review as review  # noqa: E402
 import handlers.actions.urgent as urgent  # noqa: E402
 from models.types import CalendarInvite, Category, Classification, Importance  # noqa: E402
-from services import email_events  # noqa: E402
+from services import email_events, labeling  # noqa: E402
 
 
 def _classification(category=Category.REVIEW) -> Classification:
@@ -163,3 +173,33 @@ def test_urgent_push_clicks_through_to_the_email(monkeypatch):
     urgent.handle(_classification(Category.URGENT), msg)
     # task is created async by the tasks service — the push opens the email
     assert notified["click_url"] == "https://outlook.example/m1"
+
+
+def test_apply_label_publishes_label_applied(monkeypatch):
+    class FakeConn:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def commit(self):
+            pass
+
+    monkeypatch.setattr(labeling, "get_conn", lambda: FakeConn())
+    monkeypatch.setattr(labeling.classifications, "insert", lambda conn, **kw: None)
+    monkeypatch.setattr(labeling, "set_current_label", lambda conn, mid, label: None)
+    published = []
+    monkeypatch.setattr(email_events, "publish", lambda e: published.append(e))
+
+    labeling.apply_label("m1", "respond", "human_correction")
+
+    assert published == [
+        {
+            "event": "label_applied",
+            "message_id": "m1",
+            "task_gid": None,
+            "label": "respond",
+            "source": "human_correction",
+        }
+    ]
