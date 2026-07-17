@@ -64,11 +64,9 @@ CREATE TABLE IF NOT EXISTS tags (
     created_at  TIMESTAMPTZ DEFAULT now()
 );
 
-CREATE TABLE IF NOT EXISTS asana_tag_cache (
-    tag_name   TEXT PRIMARY KEY,
-    tag_gid    TEXT NOT NULL,
-    created_at TIMESTAMPTZ DEFAULT now()
-);
+-- asana_tag_cache moved to the tasks repo's own database (github.com/bdrolet/tasks)
+-- with the tasks-service extraction. Drop from live installs once confirmed idle:
+--   DROP TABLE IF EXISTS asana_tag_cache;
 
 CREATE TABLE IF NOT EXISTS calendar_invites (
     id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
