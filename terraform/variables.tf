@@ -104,7 +104,7 @@ variable "asana_api_key" {
 }
 
 variable "asana_project_id" {
-  description = "Asana project GID for inbox review tasks (from https://app.asana.com/0/{gid}/list)"
+  description = "Asana project GID — kept as the documented reference value for the tasks repo (github.com/bdrolet/tasks); inbox no longer creates tasks"
   type        = string
   default     = ""
 }

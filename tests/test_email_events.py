@@ -2,9 +2,14 @@ import sys
 import types
 from datetime import UTC, datetime
 
+import pytest
+
 # Stub the heavy DB module the handler chain imports at load time
 # (handlers.actions._shared -> services.calendar_invite -> clients.db -> psycopg,
 # which needs libpq and isn't available on this machine).
+# NOTE: these sys.modules stubs persist for the whole pytest session once this
+# file is collected — any later test file wanting the REAL clients.db /
+# repo.classifications / repo.embeddings must install its own via monkeypatch.
 _fake_db = types.ModuleType("clients.db")
 _fake_db.get_conn = lambda: None
 sys.modules.setdefault("clients.db", _fake_db)
@@ -215,7 +220,6 @@ def test_apply_label_publishes_label_applied(monkeypatch):
             pass
 
     monkeypatch.setattr(labeling, "get_conn", lambda: FakeConn())
-    monkeypatch.setattr(labeling.classifications, "insert", lambda conn, **kw: None)
     monkeypatch.setattr(labeling, "set_current_label", lambda conn, mid, label: None)
     published = []
     monkeypatch.setattr(email_events, "publish", lambda e: published.append(e))
@@ -230,4 +234,57 @@ def test_apply_label_publishes_label_applied(monkeypatch):
             "label": "respond",
             "source": "human_correction",
         }
+    ]
+
+
+def test_build_event_pins_received_at_isoformat():
+    msg = _msg() | {"received_at": datetime(2026, 7, 15, 12, 0, tzinfo=UTC)}
+    event = email_events.build_event(msg, _classification())
+    # Cross-repo seam: the tasks service parses this — pin the T-separated form.
+    assert event["received_at"] == "2026-07-15T12:00:00+00:00"
+
+
+def test_build_event_message_id_never_literal_none(monkeypatch):
+    monkeypatch.delenv("REDIRECTOR_BASE_URL", raising=False)
+    event = email_events.build_event(_msg() | {"id": None}, _classification())
+    assert event["message_id"] == ""
+
+
+def test_urgent_survives_ntfy_outage(monkeypatch):
+    monkeypatch.delenv("REDIRECTOR_BASE_URL", raising=False)
+    monkeypatch.setenv("WEBHOOK_URL", "https://inbox-webhook.example")
+    monkeypatch.setattr(urgent, "prepare", lambda msg: _invite())
+
+    def _boom(**kwargs):
+        raise RuntimeError("ntfy down")
+
+    monkeypatch.setattr(urgent.ntfy, "notify", _boom)
+
+    extras = urgent.handle(_classification(Category.URGENT), _msg())
+    # A push failure must not cost the event its invite seeds.
+    assert any(p.startswith("Calendar invite: Standup") for p in extras["seed_key_points"])
+
+
+def test_publish_records_metric_by_outcome(monkeypatch):
+    recorded = []
+
+    class FakeCounter:
+        def add(self, n, attrs):
+            recorded.append((n, attrs))
+
+    monkeypatch.setattr(email_events.otel, "events_published", FakeCounter())
+
+    monkeypatch.setattr(email_events.pubsub, "publish", lambda topic, event: None)
+    email_events.publish({"event": "email_classified", "message_id": "m1"})
+
+    def _fail(topic, event):
+        raise RuntimeError("broker down")
+
+    monkeypatch.setattr(email_events.pubsub, "publish", _fail)
+    with pytest.raises(RuntimeError):
+        email_events.publish({"event": "label_applied", "message_id": "m1"})
+
+    assert recorded == [
+        (1, {"event": "email_classified", "outcome": "ok"}),
+        (1, {"event": "label_applied", "outcome": "error"}),
     ]

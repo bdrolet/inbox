@@ -14,7 +14,9 @@ calendar-specific code.
 import logging
 import os
 import urllib.parse
+from datetime import datetime
 
+import clients.otel as otel
 from clients import pubsub
 from models.message import Message
 from models.types import CalendarInvite, Classification
@@ -31,7 +33,13 @@ _HTML_LIMIT = 200_000
 
 
 def publish(event: dict) -> None:
-    pubsub.publish(_TOPIC, event)
+    attrs = {"event": event.get("event") or "unknown"}
+    try:
+        pubsub.publish(_TOPIC, event)
+    except Exception:
+        otel.events_published.add(1, attrs | {"outcome": "error"})
+        raise
+    otel.events_published.add(1, attrs | {"outcome": "ok"})
     logger.info("Published %s event for message_id=%s", event.get("event"), event.get("message_id"))
 
 
@@ -39,9 +47,10 @@ def build_event(msg: Message, classification: Classification, extras: dict | Non
     """Assemble the email_classified payload from the message, its
     classification, and the action handler's extras (draft_link, invite seeds)."""
     extras = extras or {}
+    received = msg["received_at"]
     return {
         "event": "email_classified",
-        "message_id": str(msg["id"]),
+        "message_id": str(msg.get("id") or ""),
         "category": classification.category.value,
         "importance": classification.importance.value,
         "confidence": classification.confidence,
@@ -50,7 +59,8 @@ def build_event(msg: Message, classification: Classification, extras: dict | Non
         "sender_display": msg.get("sender_display") or msg["sender"],
         "to": msg.get("to") or [],
         "cc": msg.get("cc") or [],
-        "received_at": str(msg["received_at"]),
+        # Cross-repo seam: pin the ISO-8601 "T" form (str(datetime) uses a space)
+        "received_at": received.isoformat() if isinstance(received, datetime) else str(received),
         "tags": classification.tags,
         "reasoning": classification.reasoning,
         "body": (msg["body"] or "")[:_BODY_LIMIT],

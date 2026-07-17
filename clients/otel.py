@@ -30,6 +30,7 @@ confidence_hist: metrics.Histogram = metrics.NoOpMeter("noop").create_histogram(
 stage_duration: metrics.Histogram = metrics.NoOpMeter("noop").create_histogram("noop")
 neighbors_hist: metrics.Histogram = metrics.NoOpMeter("noop").create_histogram("noop")
 sweep_actions: metrics.Counter = metrics.NoOpMeter("noop").create_counter("noop")
+events_published: metrics.Counter = metrics.NoOpMeter("noop").create_counter("noop")
 
 
 def setup_telemetry(service_name: str) -> None:
@@ -40,7 +41,7 @@ def setup_telemetry(service_name: str) -> None:
     global _meter_provider, _tracer_provider, _metric_reader
     global emails_processed, emails_duplicates, pipeline_errors, claude_tokens
     global human_feedback, confidence_hist, stage_duration, neighbors_hist
-    global sweep_actions
+    global sweep_actions, events_published
 
     endpoint = os.environ.get("GRAFANA_OTLP_ENDPOINT")
     if not endpoint:
@@ -96,6 +97,10 @@ def setup_telemetry(service_name: str) -> None:
     )
     sweep_actions = meter.create_counter(
         "inbox.sweep.actions", description="Sweep actions by outcome (moved/held/skipped/errored)"
+    )
+    events_published = meter.create_counter(
+        "inbox.events.published",
+        description="Domain events published to email-events, by event type and outcome",
     )
 
     # --- Logs ---

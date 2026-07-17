@@ -106,10 +106,13 @@ def webhook(request):
             message_id = request.args.get("id")
             action = request.args.get("action")
             logger.info("Calendar action: id=%s action=%s", message_id, action)
+            # .result() blocks until the broker acks — the client batches on a
+            # background thread, and an instance frozen after the response can
+            # silently drop an unflushed publish.
             publisher.publish(
                 calendar_topic,
                 json.dumps({"message_id": message_id, "action": action}).encode(),
-            )
+            ).result(timeout=30)
             if request.method == "GET":
                 return f"Action '{action}' queued.", 200, {"Content-Type": "text/plain"}
             return "", 202
@@ -140,7 +143,7 @@ def webhook(request):
                         {"message_id": message_id, "label": label, "source": source}
                     ).encode(),
                     **carrier,
-                )
+                ).result(timeout=30)
             if request.method == "GET":
                 return f"Label '{label}' applied.", 200, {"Content-Type": "text/plain"}
             return "", 202
@@ -150,6 +153,7 @@ def webhook(request):
         client_state = os.environ.get("WEBHOOK_CLIENT_STATE", "inbox-webhook")
         published = 0
 
+        futures = []
         with _get_tracer().start_as_current_span("inbox.webhook") as span:
             for notification in body.get("value", []):
                 if "lifecycleEvent" in notification:
@@ -165,8 +169,15 @@ def webhook(request):
 
                 carrier = {}
                 inject(carrier)
-                publisher.publish(messages_topic, json.dumps(notification).encode(), **carrier)
+                futures.append(
+                    publisher.publish(messages_topic, json.dumps(notification).encode(), **carrier)
+                )
                 published += 1
+
+            # Await broker acks before responding — unflushed batches drop if
+            # the instance is frozen after the 202.
+            for future in futures:
+                future.result(timeout=30)
 
             span.set_attribute("published_count", published)
 
