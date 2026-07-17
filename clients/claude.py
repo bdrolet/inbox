@@ -81,6 +81,30 @@ def classify(system_prompt: str, user_message: str) -> Classification:
     )
 
 
+def retriage_verdict(system_prompt: str, user_message: str) -> dict:
+    """Call Claude for a stale-urgent re-triage verdict. Returns the parsed
+    JSON dict (must contain 'verdict'); raises ValueError on bad output —
+    fail-safe handling belongs to the caller."""
+    response = _get_client().messages.create(
+        model="claude-sonnet-4-6",
+        max_tokens=256,
+        temperature=0,
+        system=system_prompt,
+        messages=[{"role": "user", "content": user_message}],
+    )
+    usage = response.usage
+    otel.claude_tokens.add(usage.input_tokens, {"token_type": "input"})
+    otel.claude_tokens.add(usage.output_tokens, {"token_type": "output"})
+    text = response.content[0].text.strip()  # type: ignore[union-attr]
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"retriage verdict is not JSON: {text}") from e
+    if "verdict" not in data:
+        raise ValueError(f"retriage verdict missing 'verdict': {data}")
+    return data
+
+
 def draft(prompt: str) -> str:
     """Generate a draft reply. Temperature 0.3, max_tokens 800. Returns plain text."""
     response = _get_client().messages.create(
