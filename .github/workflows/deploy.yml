@@ -50,10 +50,6 @@ jobs:
           TF_VAR_db_password: ${{ secrets.TF_VAR_DB_PASSWORD }}
           TF_VAR_graph_subscription_id: ${{ vars.GRAPH_SUBSCRIPTION_ID }}
           TF_VAR_ntfy_topic: ${{ vars.NTFY_TOPIC }}
-          TF_VAR_webhook_label_token: ${{ secrets.TF_VAR_WEBHOOK_LABEL_TOKEN }}
-          TF_VAR_grafana_otlp_endpoint: ${{ secrets.TF_VAR_GRAFANA_OTLP_ENDPOINT }}
-          TF_VAR_grafana_otlp_token: ${{ secrets.TF_VAR_GRAFANA_OTLP_TOKEN }}
-          TF_VAR_asana_api_key: ${{ secrets.TF_VAR_ASANA_API_KEY }}
           TF_VAR_asana_project_id: ${{ vars.ASANA_PROJECT_ID }}
           TF_VAR_hubspot_token: ${{ secrets.TF_VAR_HUBSPOT_TOKEN }}
           TF_VAR_hf_token: ${{ secrets.TF_VAR_HF_TOKEN }}

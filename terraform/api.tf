@@ -47,7 +47,7 @@ resource "google_cloud_run_v2_service" "api" {
       }
       env {
         name  = "CLOUD_SQL_CONNECTION_NAME"
-        value = google_sql_database_instance.inbox.connection_name
+        value = data.google_sql_database_instance.inbox.connection_name
       }
       env {
         name  = "POSTGRES_USER"
@@ -120,7 +120,7 @@ resource "google_cloud_run_v2_service" "api" {
 
   depends_on = [
     google_project_service.apis,
-    google_sql_database_instance.inbox,
+    data.google_sql_database_instance.inbox,
     google_artifact_registry_repository.inbox,
   ]
 }

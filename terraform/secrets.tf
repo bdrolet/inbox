@@ -6,10 +6,6 @@ locals {
     "anthropic-api-key"             = var.anthropic_api_key
     "msal-token-cache"              = var.msal_token_cache
     "inbox-db-password"             = var.db_password
-    "webhook-label-token"           = var.webhook_label_token
-    "grafana-otlp-endpoint"         = var.grafana_otlp_endpoint
-    "grafana-otlp-token"            = var.grafana_otlp_token
-    "asana-api-key"                 = var.asana_api_key
     "hubspot-token"                 = var.hubspot_token
     "google-calendar-client-id"     = var.google_calendar_client_id
     "google-calendar-client-secret" = var.google_calendar_client_secret
@@ -73,6 +69,20 @@ moved {
 # ntfy-token and ntfy-password were created outside Terraform — reference as data sources
 data "google_secret_manager_secret" "ntfy_token" {
   secret_id = "ntfy-token"
+  project   = var.project_id
+}
+
+# Shared secrets owned by the platform state (~/src/infra) — referenced read-only.
+# Do NOT convert to resources: two states owning the same secret_id fails with
+# "already exists". (asana-api-key is also platform-owned but inbox no longer
+# reads it, so it is not referenced here.)
+data "google_secret_manager_secret" "shared" {
+  for_each = toset([
+    "grafana-otlp-endpoint",
+    "grafana-otlp-token",
+    "webhook-label-token",
+  ])
+  secret_id = each.key
   project   = var.project_id
 }
 

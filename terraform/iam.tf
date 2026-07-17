@@ -51,7 +51,7 @@ resource "google_secret_manager_secret_iam_member" "process_cf_anthropic" {
 
 # Read the webhook label token (to embed in ntfy action button headers)
 resource "google_secret_manager_secret_iam_member" "process_cf_webhook_label_token" {
-  secret_id = google_secret_manager_secret.secrets["webhook-label-token"].secret_id
+  secret_id = data.google_secret_manager_secret.shared["webhook-label-token"].secret_id
   role      = "roles/secretmanager.secretAccessor"
   member    = "serviceAccount:${google_service_account.process_cf.email}"
 }
@@ -66,7 +66,7 @@ resource "google_secret_manager_secret_iam_member" "process_cf_ntfy_token" {
 # Read the Grafana OTLP endpoint and token from Secret Manager
 resource "google_secret_manager_secret_iam_member" "process_cf_grafana" {
   for_each  = toset(["grafana-otlp-endpoint", "grafana-otlp-token"])
-  secret_id = google_secret_manager_secret.secrets[each.key].secret_id
+  secret_id = data.google_secret_manager_secret.shared[each.key].secret_id
   role      = "roles/secretmanager.secretAccessor"
   member    = "serviceAccount:${google_service_account.process_cf.email}"
 }
@@ -115,7 +115,7 @@ resource "google_pubsub_topic_iam_member" "webhook_cf_publisher" {
 
 # Read the webhook label token (to validate /label requests)
 resource "google_secret_manager_secret_iam_member" "webhook_cf_label_token" {
-  secret_id = google_secret_manager_secret.secrets["webhook-label-token"].secret_id
+  secret_id = data.google_secret_manager_secret.shared["webhook-label-token"].secret_id
   role      = "roles/secretmanager.secretAccessor"
   member    = "serviceAccount:${google_service_account.webhook_cf.email}"
 }
@@ -137,7 +137,7 @@ resource "google_pubsub_topic_iam_member" "webhook_cf_calendar_publisher" {
 # Read the Grafana OTLP endpoint and token from Secret Manager
 resource "google_secret_manager_secret_iam_member" "webhook_cf_grafana" {
   for_each  = toset(["grafana-otlp-endpoint", "grafana-otlp-token"])
-  secret_id = google_secret_manager_secret.secrets[each.key].secret_id
+  secret_id = data.google_secret_manager_secret.shared[each.key].secret_id
   role      = "roles/secretmanager.secretAccessor"
   member    = "serviceAccount:${google_service_account.webhook_cf.email}"
 }
