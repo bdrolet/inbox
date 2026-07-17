@@ -163,6 +163,7 @@ CLOUD_SQL_CONNECTION_NAME=bens-project-462804:us-central1:inbox \
 | 3 | **Complete** | Claude Sonnet, 5-category + P0–P3 importance, retrieval-augmented prompt |
 | 4 | **Complete** | ntfy push notifications, Outlook color-category tagging, human feedback loop |
 | — | **Complete** | Deferred folder moves: `inbox-sweep` CF (5 AM ET) files by tag, `keep_until` holds, immutable IDs + `/r/{uuid}` redirector |
+| — | **Complete** | Tasks-service extraction: `email_classified`/`label_applied` events on the `email-events` topic; Asana task creation + enrichment moved to the tasks repo |
 | 5 | **Next** | Bootstrap labels, decommission Cloud Run Job |
 
 ## Known issues / gotchas

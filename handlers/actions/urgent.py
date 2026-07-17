@@ -14,15 +14,19 @@ def handle(classification: Classification, msg: Message) -> dict:
     invite = prepare(msg)
     points, links = email_events.invite_extras(str(msg["id"]), invite)
 
-    ntfy.notify(
-        message_id=str(msg["id"] or ""),
-        subject=msg["subject"],
-        sender=msg["sender"],
-        reasoning=classification.reasoning,
-        importance=classification.importance.value,
-        # Task is created asynchronously by the tasks service — tapping the
-        # push opens the email itself (stable redirector link) instead.
-        click_url=redirector_url(str(msg.get("id") or "")) or msg.get("web_link"),
-    )
-    logger.info("ntfy notification sent for message_id=%s", msg["id"])
+    try:
+        ntfy.notify(
+            message_id=str(msg["id"] or ""),
+            subject=msg["subject"],
+            sender=msg["sender"],
+            reasoning=classification.reasoning,
+            importance=classification.importance.value,
+            # Task is created asynchronously by the tasks service — tapping the
+            # push opens the email itself (stable redirector link) instead.
+            click_url=redirector_url(str(msg.get("id") or "")) or msg.get("web_link"),
+        )
+        logger.info("ntfy notification sent for message_id=%s", msg["id"])
+    except Exception:
+        # A push failure must not cost the published event its invite seeds.
+        logger.exception("ntfy notification failed for message_id=%s", msg["id"])
     return {"seed_key_points": points or None, "seed_links": links or None}
