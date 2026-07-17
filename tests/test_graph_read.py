@@ -187,3 +187,16 @@ def test_latest_reply_from_me_none_on_graph_error(monkeypatch):
     monkeypatch.setattr(requests, "get", fake_get)
     after = datetime(2026, 7, 10, tzinfo=timezone.utc)
     assert _client().latest_reply_from_me("conv1", after) is None
+
+
+def test_latest_reply_from_me_none_on_bad_sent_datetime(monkeypatch):
+    def fake_get(url, headers=None, params=None):
+        return _Resp(
+            json_data={
+                "value": [{"id": "s1", "sentDateTime": "not-a-date", "bodyPreview": "hi"}]
+            }
+        )
+
+    monkeypatch.setattr(requests, "get", fake_get)
+    after = datetime(2026, 7, 10, tzinfo=timezone.utc)
+    assert _client().latest_reply_from_me("conv1", after) is None

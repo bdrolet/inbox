@@ -1074,7 +1074,7 @@ class GraphEmailClient:
                 if sent_dt > after and (best is None or sent_dt > best[0]):
                     best = (sent_dt, m.get("bodyPreview", ""))
             return best[1] if best else None
-        except requests.exceptions.RequestException:
+        except (requests.exceptions.RequestException, ValueError, TypeError):
             logger.warning("latest_reply_from_me failed for conversation %s", conversation_id)
             return None
 
