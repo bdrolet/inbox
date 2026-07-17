@@ -1,5 +1,6 @@
 import pytest
 import requests
+from datetime import datetime, timezone
 
 from clients.azure.graph_email_client import GraphEmailClient
 
@@ -143,3 +144,46 @@ def test_list_inbox_categories_includes_received_and_conversation(monkeypatch):
         "conversationId": "conv1",
     }
     assert rows[1] == {"id": "m2", "categories": [], "receivedDateTime": None, "conversationId": None}
+
+
+def test_latest_reply_from_me_returns_newest_preview(monkeypatch):
+    def fake_get(url, headers=None, params=None):
+        assert "sentitems" in url
+        assert params["$filter"] == "conversationId eq 'conv1'"
+        return _Resp(
+            json_data={
+                "value": [
+                    {"id": "s1", "sentDateTime": "2026-07-11T09:00:00Z",
+                     "bodyPreview": "older reply"},
+                    {"id": "s2", "sentDateTime": "2026-07-12T09:00:00Z",
+                     "bodyPreview": "on it, will finish Friday"},
+                ]
+            }
+        )
+
+    monkeypatch.setattr(requests, "get", fake_get)
+    after = datetime(2026, 7, 10, tzinfo=timezone.utc)
+    assert _client().latest_reply_from_me("conv1", after) == "on it, will finish Friday"
+
+
+def test_latest_reply_from_me_none_when_only_older_replies(monkeypatch):
+    def fake_get(url, headers=None, params=None):
+        return _Resp(
+            json_data={
+                "value": [{"id": "s1", "sentDateTime": "2026-07-09T09:00:00Z",
+                           "bodyPreview": "before it arrived"}]
+            }
+        )
+
+    monkeypatch.setattr(requests, "get", fake_get)
+    after = datetime(2026, 7, 10, tzinfo=timezone.utc)
+    assert _client().latest_reply_from_me("conv1", after) is None
+
+
+def test_latest_reply_from_me_none_on_graph_error(monkeypatch):
+    def fake_get(url, headers=None, params=None):
+        raise requests.exceptions.ConnectionError("boom")
+
+    monkeypatch.setattr(requests, "get", fake_get)
+    after = datetime(2026, 7, 10, tzinfo=timezone.utc)
+    assert _client().latest_reply_from_me("conv1", after) is None

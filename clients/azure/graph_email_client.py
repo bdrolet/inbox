@@ -1049,6 +1049,35 @@ class GraphEmailClient:
             url = data.get("@odata.nextLink")
         return results
 
+    def latest_reply_from_me(self, conversation_id: str, after: datetime) -> str | None:
+        """bodyPreview of the most recent Sent Items message in the conversation
+        sent after `after`, or None if there is none. Returns None on any
+        failure — absence of evidence, callers must not treat it as proof of
+        no reply."""
+        try:
+            resp = requests.get(
+                f"{self.graph_endpoint}/me/mailFolders/sentitems/messages",
+                headers=self.get_headers(immutable=True),
+                params={
+                    "$filter": f"conversationId eq '{conversation_id}'",
+                    "$select": "id,sentDateTime,bodyPreview",
+                    "$top": "25",
+                },
+            )
+            resp.raise_for_status()
+            best: tuple[datetime, str] | None = None
+            for m in resp.json().get("value", []):
+                sent = m.get("sentDateTime")
+                if not sent:
+                    continue
+                sent_dt = datetime.fromisoformat(sent.replace("Z", "+00:00"))
+                if sent_dt > after and (best is None or sent_dt > best[0]):
+                    best = (sent_dt, m.get("bodyPreview", ""))
+            return best[1] if best else None
+        except requests.exceptions.RequestException:
+            logger.warning("latest_reply_from_me failed for conversation %s", conversation_id)
+            return None
+
     def get_web_link(self, external_id: str) -> str | None:
         """Resolve a message's current webLink via its immutable ID."""
         resp = requests.get(
