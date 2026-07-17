@@ -503,8 +503,9 @@ resource "google_cloudfunctions2_function" "sweep" {
     timeout_seconds       = 540
     available_memory      = "512Mi"
     environment_variables = {
-      GCP_PROJECT_ID   = var.project_id
-      MSAL_SECRET_NAME = "msal-token-cache"
+      GCP_PROJECT_ID       = var.project_id
+      MSAL_SECRET_NAME     = "msal-token-cache"
+      INBOX_MESSAGES_TOPIC = google_pubsub_topic.inbox_messages.name
     }
     secret_environment_variables {
       key        = "CLIENT_ID"
@@ -522,6 +523,12 @@ resource "google_cloudfunctions2_function" "sweep" {
       key        = "TENANT_ID"
       project_id = var.project_id
       secret     = google_secret_manager_secret.secrets["tenant-id"].secret_id
+      version    = "latest"
+    }
+    secret_environment_variables {
+      key        = "ANTHROPIC_API_KEY"
+      project_id = var.project_id
+      secret     = google_secret_manager_secret.secrets["anthropic-api-key"].secret_id
       version    = "latest"
     }
     secret_environment_variables {
