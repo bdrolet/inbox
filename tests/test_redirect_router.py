@@ -23,6 +23,10 @@ def client(monkeypatch):
     )
     monkeypatch.setitem(sys.modules, "repo.messages", fake_repo)
 
+    import repo
+
+    monkeypatch.setattr(repo, "messages", fake_repo, raising=False)
+
     import importlib
 
     import api.routers.redirect as redirect
