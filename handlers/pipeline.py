@@ -207,5 +207,6 @@ def _repair_tag_if_missing(conn, graph_client, email, db_message_id, external_id
     if stored.get("importance"):
         categories.append(stored["importance"])
     categories += stored.get("tags") or []
+    categories += [c for c in (getattr(email, "categories", []) or []) if c not in categories]
     graph_client.tag_message(external_id, categories)
     logger.info("Repaired missing tag on %s -> %s", external_id, categories)

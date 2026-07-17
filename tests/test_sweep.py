@@ -125,6 +125,47 @@ def test_run_sweep_grooming_errors_do_not_abort():
     assert ("a", "Archive") in client.moved  # batch continued
 
 
+def test_run_sweep_republish_caps_attempts_not_successes(monkeypatch):
+    import services.sweep_rules as rules
+
+    monkeypatch.setattr(rules, "REPUBLISH_NIGHTLY_CAP", 2)
+    now = datetime(2026, 7, 14, 5, 0, tzinfo=ET)
+    old = "2026-07-01T12:00:00Z"
+    client = FakeClient(
+        [{"id": f"u{i}", "categories": [], "receivedDateTime": old} for i in range(4)]
+    )
+
+    def always_fails(msg_id):
+        raise RuntimeError("publish exploded")
+
+    counts = run_sweep(client, now, republish=always_fails)
+    assert counts["errored"] == 2
+    assert counts["skipped"] == 2
+    assert counts["republished"] == 0
+
+
+def test_run_sweep_retriage_keep_reports_errored_on_tag_failure():
+    now = datetime(2026, 7, 14, 5, 0, tzinfo=ET)
+    stale = "2026-07-01T12:00:00Z"
+
+    class UntaggableClient(FakeClient):
+        def set_categories(self, msg_id, categories):
+            self.stripped.append((msg_id, categories))
+            return False
+
+    client = UntaggableClient(
+        [{"id": "keep", "categories": ["urgent"], "receivedDateTime": stale,
+          "conversationId": "c1"}]
+    )
+
+    def evaluate(c, message_id, conversation_id, received_at, now_):
+        return "still_urgent"
+
+    counts = run_sweep(client, now, evaluate=evaluate)
+    assert counts["errored"] == 1
+    assert counts["retriaged_kept"] == 0
+
+
 def test_run_sweep_without_grooming_callables_is_safe():
     now = datetime(2026, 7, 14, 5, 0, tzinfo=ET)
     old = "2026-07-01T12:00:00Z"

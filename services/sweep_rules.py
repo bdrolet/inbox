@@ -5,6 +5,8 @@ from datetime import datetime, time, timedelta
 from typing import Literal
 from zoneinfo import ZoneInfo
 
+from models.types import Category
+
 ET = ZoneInfo("America/New_York")
 KEEP_UNTIL_PREFIX = "keep_until:"
 
@@ -12,7 +14,7 @@ RETRIAGE_AFTER = timedelta(days=3)
 REPUBLISH_AFTER = timedelta(hours=24)
 RETRIAGE_HOLD_DAYS = 3
 REPUBLISH_NIGHTLY_CAP = 50
-KNOWN_CATEGORIES = {"urgent", "respond", "review", "reference", "ignore"}
+KNOWN_CATEGORIES = {c.value for c in Category}
 
 _CATEGORY_FOLDER = {
     "reference": "Archive",

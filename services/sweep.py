@@ -35,6 +35,7 @@ def run_sweep(
         "retriaged_archived": 0,
         "republished": 0,
     }
+    attempts = {"republish": 0}
     for msg in client.list_inbox_categories():
         received_at = parse_graph_datetime(msg.get("receivedDateTime"))
         d = decide(msg.get("categories", []), now, received_at)
@@ -48,7 +49,7 @@ def run_sweep(
             _retriage(client, msg, received_at, now, evaluate, counts)
             continue
         if d.action == "republish":
-            _republish(msg, republish, counts)
+            _republish(msg, republish, counts, attempts)
             continue
         # action == "move"
         moved = client.move_message_to_action_folder(msg["id"], d.folder)
@@ -72,15 +73,21 @@ def _retriage(client, msg, received_at, now, evaluate, counts) -> None:
         verdict = evaluate(client, msg["id"], msg.get("conversationId"), received_at, now)
         outcome = apply_verdict(verdict, msg.get("categories", []), now)
         if outcome.folder is None:
-            client.set_categories(msg["id"], outcome.new_categories)
-            counts["retriaged_kept"] += 1
+            if client.set_categories(msg["id"], outcome.new_categories):
+                counts["retriaged_kept"] += 1
+            else:
+                counts["errored"] += 1
+                logger.warning("sweep: retriage tag update failed for %s", msg["id"])
             return
         moved = client.move_message_to_action_folder(msg["id"], outcome.folder)
         if moved is None:
             counts["errored"] += 1
             logger.warning("sweep: retriage move failed for %s", msg["id"])
             return
-        client.set_categories(moved.get("id", msg["id"]), outcome.new_categories)
+        if not client.set_categories(moved.get("id", msg["id"]), outcome.new_categories):
+            counts["errored"] += 1
+            logger.warning("sweep: retriage tag update failed for %s", msg["id"])
+            return
         if outcome.folder == "Archive":
             counts["retriaged_archived"] += 1
         else:
@@ -90,10 +97,11 @@ def _retriage(client, msg, received_at, now, evaluate, counts) -> None:
         logger.warning("sweep: retriage failed for %s", msg["id"], exc_info=True)
 
 
-def _republish(msg, republish, counts) -> None:
-    if republish is None or counts["republished"] >= rules.REPUBLISH_NIGHTLY_CAP:
+def _republish(msg, republish, counts, attempts) -> None:
+    if republish is None or attempts["republish"] >= rules.REPUBLISH_NIGHTLY_CAP:
         counts["skipped"] += 1
         return
+    attempts["republish"] += 1
     try:
         republish(msg["id"])
         counts["republished"] += 1
