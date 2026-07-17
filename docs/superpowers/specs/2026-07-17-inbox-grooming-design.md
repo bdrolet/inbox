@@ -20,8 +20,8 @@ after N days" rule would file away things that are still genuinely urgent, just 
 ## Goals
 
 - **Stale-urgent re-triage.** An `urgent` message untouched for 3 days is re-evaluated by
-  Claude using real signals (message content, its age, today's date, and whether Ben has
-  replied in the thread). The verdict decides its fate: stay urgent, demote to
+  Claude using real signals (message content, its age, today's date, and the text of Ben's
+  latest reply in the thread, if any). The verdict decides its fate: stay urgent, demote to
   needs-response, or archive as resolved/expired. Still-urgent messages are re-checked every
   3 days, not nightly.
 - **Untagged reclassification.** Untagged Inbox mail older than 24 hours is fed through the
@@ -49,9 +49,13 @@ after N days" rule would file away things that are still genuinely urgent, just 
 ## Accepted trade-offs
 
 - **LLM verdicts can be wrong.** A still-pending message could be judged expired and
-  archived. Mitigations: the reply-signal is factual (did Ben reply, yes/no), the verdict
-  prompt is deliberately conservative (uncertain → `still_urgent`), and archived mail is
-  never deleted — it is findable in `Archive` and via search. Accepted.
+  archived. Mitigations: the reply evidence is factual and content-bearing (the `bodyPreview`
+  of Ben's latest Sent Items message in the thread — so a holding reply like "on it, will
+  finish Friday" reads as still-pending rather than resolved), the verdict prompt is
+  deliberately conservative (uncertain → `still_urgent`), and archived mail is never
+  deleted — it is findable in `Archive` and via search. A reply whose resolution lives
+  beyond the ~255-char preview is a rare, accepted blind spot (full bodies would cost an
+  extra Graph call per sent message). Accepted.
 - **Two-morning latency for untagged mail.** A republished message is classified minutes
   after the sweep but not filed until the *next* sweep. Accepted — consistent with the
   deferred-move design's "tags now, moves at 5 AM" philosophy.
@@ -75,7 +79,7 @@ processor:
        - keep_until present, not elapsed        → hold (existing; also defers re-triage)
        - category tag maps to a folder           → move (existing behavior, unchanged)
        - URGENT tag, received > 3 days ago       → RE-TRIAGE (new):
-           gather: subject/body, received date, today, has-Ben-replied (conversationId)
+           gather: subject/body, received date, today, latest-reply preview (conversationId)
            Claude verdict:
              still_urgent        → apply keep_until:<now+3d>  (stays; re-checked in 3 days)
              needs_response      → retag urgent→respond, move to reply_required
@@ -98,11 +102,14 @@ minutes later — processor CF (existing pipeline)
 `list_inbox_categories()` widens its `$select` to
 `id,categories,receivedDateTime,conversationId` and returns those fields per message.
 Callers that only read `id`/`categories` (the existing sweep rules) are unaffected. One new
-helper, `has_reply_from_me(conversation_id, after: datetime) -> bool`, checks whether any
-message in the conversation was **sent by the mailbox owner** after the given instant
-(query the conversation, filter `from` = own address, `sentDateTime > after`). Failure to
-determine → return `False` (absence of evidence, not evidence of absence; the verdict prompt
-treats it accordingly).
+helper, `latest_reply_from_me(conversation_id, after: datetime) -> str | None`, returns the
+`bodyPreview` of the **most recent Sent Items message** in the conversation sent after the
+given instant, or `None` if there is none (Sent Items only contains mail the mailbox owner
+sent, so no `from`-address comparison is needed). Returning the reply *content* rather than
+a boolean lets the verdict distinguish a holding reply ("on it, will finish Friday" →
+still pending) from a resolving one ("done, fixed" → resolvable). Failure to determine →
+return `None` (absence of evidence, not evidence of absence; the verdict prompt treats it
+accordingly).
 
 ### 2. Sweep rules (`services/sweep_rules.py` — pure, no I/O)
 
@@ -129,8 +136,9 @@ outcomes, keeping the function pure and CI-testable:
 
 Owns the one concern of evaluating a stale urgent message:
 
-- Fetches the message body (existing fetch path), calls `has_reply_from_me`, and builds a
-  compact prompt: subject, trimmed body, received date, today's date, and the reply signal.
+- Fetches the message body (existing fetch path), calls `latest_reply_from_me`, and builds
+  a compact prompt: subject, trimmed body, received date, today's date, and the latest-reply
+  excerpt (or an explicit "owner has not replied" line when there is none).
 - Calls Claude (same client as classification, `claude-sonnet-4-6`) requesting a structured
   verdict: `still_urgent | needs_response | resolved_or_expired`, with a one-line reason
   (logged, not stored).
@@ -172,7 +180,7 @@ a safe universal repair action.
 - **Per-message isolation:** every new action (re-triage, republish) is wrapped so a failure
   logs + counts `errored` and continues the batch — same contract as the existing move loop.
 - **Fail-safe defaults everywhere:** missing `received_at` → skip; reply-lookup failure →
-  "no reply found"; Claude error or malformed verdict → `still_urgent` (nothing moves);
+  treated as "no reply found"; Claude error or malformed verdict → `still_urgent` (nothing moves);
   publish failure → message stays untagged and is retried next night.
 - **Cap as circuit breaker:** the 50/night republish cap bounds Claude cost and Pub/Sub
   volume even if the Inbox suddenly contains thousands of untagged messages.

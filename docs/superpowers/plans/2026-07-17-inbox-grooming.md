@@ -122,16 +122,16 @@ git commit -m "feat: include receivedDateTime + conversationId in sweep Inbox li
 
 ---
 
-### Task 2: `has_reply_from_me` Graph helper
+### Task 2: `latest_reply_from_me` Graph helper
 
-Factual signal for re-triage: has Ben sent anything in this conversation since the message arrived? Sent Items only contains mail the mailbox owner sent, so a Sent Items lookup by `conversationId` is sufficient — no `from`-address comparison needed.
+Content-bearing signal for re-triage: what did Ben last say in this conversation since the message arrived? Returning the reply's `bodyPreview` (not a boolean) lets the verdict distinguish a holding reply ("on it, will finish Friday" → still pending) from a resolving one ("done, fixed" → resolvable). Sent Items only contains mail the mailbox owner sent, so a Sent Items lookup by `conversationId` is sufficient — no `from`-address comparison needed.
 
 **Files:**
 - Modify: `clients/azure/graph_email_client.py` (add method after `list_inbox_categories`)
 - Test: `tests/test_graph_read.py` (append)
 
 **Interfaces:**
-- Produces: `has_reply_from_me(conversation_id: str, after: datetime) -> bool`. Failure → `False` (absence of evidence). Task 5 calls this.
+- Produces: `latest_reply_from_me(conversation_id: str, after: datetime) -> str | None` — `bodyPreview` of the most recent Sent Items message in the conversation sent after `after`; `None` when there is none. Failure → `None` (absence of evidence). Task 5 calls this.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -141,70 +141,87 @@ Append to `tests/test_graph_read.py`:
 from datetime import datetime, timezone
 
 
-def test_has_reply_from_me_true_when_sent_after(monkeypatch):
+def test_latest_reply_from_me_returns_newest_preview(monkeypatch):
     def fake_get(url, headers=None, params=None):
         assert "sentitems" in url
         assert params["$filter"] == "conversationId eq 'conv1'"
-        return _Resp(json_data={"value": [{"id": "s1", "sentDateTime": "2026-07-12T09:00:00Z"}]})
+        return _Resp(
+            json_data={
+                "value": [
+                    {"id": "s1", "sentDateTime": "2026-07-11T09:00:00Z",
+                     "bodyPreview": "older reply"},
+                    {"id": "s2", "sentDateTime": "2026-07-12T09:00:00Z",
+                     "bodyPreview": "on it, will finish Friday"},
+                ]
+            }
+        )
 
     monkeypatch.setattr(requests, "get", fake_get)
     after = datetime(2026, 7, 10, tzinfo=timezone.utc)
-    assert _client().has_reply_from_me("conv1", after) is True
+    assert _client().latest_reply_from_me("conv1", after) == "on it, will finish Friday"
 
 
-def test_has_reply_from_me_false_when_sent_before(monkeypatch):
+def test_latest_reply_from_me_none_when_only_older_replies(monkeypatch):
     def fake_get(url, headers=None, params=None):
-        return _Resp(json_data={"value": [{"id": "s1", "sentDateTime": "2026-07-09T09:00:00Z"}]})
+        return _Resp(
+            json_data={
+                "value": [{"id": "s1", "sentDateTime": "2026-07-09T09:00:00Z",
+                           "bodyPreview": "before it arrived"}]
+            }
+        )
 
     monkeypatch.setattr(requests, "get", fake_get)
     after = datetime(2026, 7, 10, tzinfo=timezone.utc)
-    assert _client().has_reply_from_me("conv1", after) is False
+    assert _client().latest_reply_from_me("conv1", after) is None
 
 
-def test_has_reply_from_me_false_on_graph_error(monkeypatch):
+def test_latest_reply_from_me_none_on_graph_error(monkeypatch):
     def fake_get(url, headers=None, params=None):
         raise requests.exceptions.ConnectionError("boom")
 
     monkeypatch.setattr(requests, "get", fake_get)
     after = datetime(2026, 7, 10, tzinfo=timezone.utc)
-    assert _client().has_reply_from_me("conv1", after) is False
+    assert _client().latest_reply_from_me("conv1", after) is None
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `.venv/bin/python -m pytest tests/test_graph_read.py -k has_reply -v`
-Expected: FAIL — `AttributeError: 'GraphEmailClient' object has no attribute 'has_reply_from_me'`.
+Run: `.venv/bin/python -m pytest tests/test_graph_read.py -k latest_reply -v`
+Expected: FAIL — `AttributeError: 'GraphEmailClient' object has no attribute 'latest_reply_from_me'`.
 
 - [ ] **Step 3: Implement**
 
-Add to `clients/azure/graph_email_client.py` (needs `from datetime import datetime` — already imported at module top; verify, add if missing):
+Add to `clients/azure/graph_email_client.py` (needs `from datetime import datetime` — already imported at module top; verify, add if missing). The most-recent pick happens client-side (`$orderby` combined with a `$filter` on a different property is unreliable in Graph):
 
 ```python
-    def has_reply_from_me(self, conversation_id: str, after: datetime) -> bool:
-        """True if any Sent Items message in the conversation was sent after
-        `after`. Returns False on any failure — absence of evidence, callers
-        must not treat it as proof of no reply."""
+    def latest_reply_from_me(self, conversation_id: str, after: datetime) -> str | None:
+        """bodyPreview of the most recent Sent Items message in the conversation
+        sent after `after`, or None if there is none. Returns None on any
+        failure — absence of evidence, callers must not treat it as proof of
+        no reply."""
         try:
             resp = requests.get(
                 f"{self.graph_endpoint}/me/mailFolders/sentitems/messages",
                 headers=self.get_headers(immutable=True),
                 params={
                     "$filter": f"conversationId eq '{conversation_id}'",
-                    "$select": "id,sentDateTime",
+                    "$select": "id,sentDateTime,bodyPreview",
                     "$top": "25",
                 },
             )
             resp.raise_for_status()
+            best: tuple[datetime, str] | None = None
             for m in resp.json().get("value", []):
                 sent = m.get("sentDateTime")
                 if not sent:
                     continue
-                if datetime.fromisoformat(sent.replace("Z", "+00:00")) > after:
-                    return True
-            return False
+                sent_dt = datetime.fromisoformat(sent.replace("Z", "+00:00"))
+                if sent_dt > after and (best is None or sent_dt > best[0]):
+                    best = (sent_dt, m.get("bodyPreview", ""))
+            return best[1] if best else None
         except requests.exceptions.RequestException:
-            logger.warning("has_reply_from_me failed for conversation %s", conversation_id)
-            return False
+            logger.warning("latest_reply_from_me failed for conversation %s", conversation_id)
+            return None
 ```
 
 - [ ] **Step 4: Run tests to verify they pass**
@@ -216,7 +233,7 @@ Expected: all PASS.
 
 ```bash
 git add clients/azure/graph_email_client.py tests/test_graph_read.py
-git commit -m "feat: has_reply_from_me conversation lookup for re-triage"
+git commit -m "feat: latest_reply_from_me conversation lookup for re-triage"
 ```
 
 ---
@@ -503,7 +520,7 @@ Two pieces: a thin Claude client function returning the parsed verdict JSON (rai
 - Test: `tests/test_retriage.py` (new)
 
 **Interfaces:**
-- Consumes: `client.get_email_details(message_id)` → `Email` (has `.subject`, `.from_display`, `.received_date`, `.get_body_text()`); `client.has_reply_from_me(conversation_id, after)` (Task 2); `parse_graph_datetime` (Task 3).
+- Consumes: `client.get_email_details(message_id)` → `Email` (has `.subject`, `.from_display`, `.received_date`, `.get_body_text()`); `client.latest_reply_from_me(conversation_id, after) -> str | None` (Task 2); `parse_graph_datetime` (Task 3).
 - Produces (Task 6 consumes): `services.retriage.evaluate(client, message_id: str, conversation_id: str | None, received_at: datetime, now: datetime) -> str` — always returns one of `"still_urgent" | "needs_response" | "resolved_or_expired"`; any internal failure returns `"still_urgent"`.
 - Also produces: `clients.claude.retriage_verdict(system_prompt: str, user_message: str) -> dict` — parsed JSON with at least a `"verdict"` key; raises `ValueError` on unparseable output.
 
@@ -556,34 +573,48 @@ class FakeEmail:
 
 
 class FakeClient:
-    def __init__(self, email=FakeEmail(), replied=False):
+    def __init__(self, email=FakeEmail(), reply=None):
         self._email = email
-        self._replied = replied
+        self._reply = reply
 
     def get_email_details(self, message_id):
         return self._email
 
-    def has_reply_from_me(self, conversation_id, after):
-        return self._replied
+    def latest_reply_from_me(self, conversation_id, after):
+        return self._reply
 
 
 NOW = datetime(2026, 7, 14, 5, 0, tzinfo=timezone.utc)
 RECEIVED = datetime(2026, 7, 10, 12, 0, tzinfo=timezone.utc)
 
 
-def test_evaluate_returns_verdict(monkeypatch):
+def test_evaluate_returns_verdict_with_reply_excerpt(monkeypatch):
     seen = {}
 
     def fake_verdict(system_prompt, user_message):
         seen["user"] = user_message
-        return {"verdict": "resolved_or_expired", "reason": "deadline passed"}
+        return {"verdict": "resolved_or_expired", "reason": "owner says it is fixed"}
 
     monkeypatch.setattr(retriage, "retriage_verdict", fake_verdict)
-    v = retriage.evaluate(FakeClient(replied=True), "m1", "conv1", RECEIVED, NOW)
+    v = retriage.evaluate(
+        FakeClient(reply="Fixed it yesterday, all good."), "m1", "conv1", RECEIVED, NOW
+    )
     assert v == "resolved_or_expired"
     assert "Server down" in seen["user"]
-    assert "yes" in seen["user"].lower()  # replied signal rendered
+    assert "Fixed it yesterday, all good." in seen["user"]  # reply excerpt rendered
     assert len(seen["user"]) < 10000  # body trimmed
+
+
+def test_evaluate_renders_no_reply_line(monkeypatch):
+    seen = {}
+
+    def fake_verdict(system_prompt, user_message):
+        seen["user"] = user_message
+        return {"verdict": "still_urgent"}
+
+    monkeypatch.setattr(retriage, "retriage_verdict", fake_verdict)
+    retriage.evaluate(FakeClient(reply=None), "m1", "conv1", RECEIVED, NOW)
+    assert "has not replied" in seen["user"]
 
 
 def test_evaluate_fail_safe_on_claude_error(monkeypatch):
@@ -651,8 +682,10 @@ Verdicts:
 - "resolved_or_expired": the owner already replied, the deadline or event has passed, \
 or no action is required anymore.
 
-The "owner replied" signal is factual (from Sent Items). Be conservative: when \
-uncertain, answer "still_urgent"."""
+The owner-reply excerpt is factual (their latest Sent Items message in the thread). \
+Read it for meaning: a holding reply ("on it", "will do this Friday") means the matter \
+is STILL PENDING, not resolved; only a reply that actually resolves the matter supports \
+"resolved_or_expired". Be conservative: when uncertain, answer "still_urgent"."""
 
 
 def evaluate(
@@ -669,16 +702,21 @@ def evaluate(
             logger.warning("retriage: could not fetch %s — keeping urgent", message_id)
             return "still_urgent"
 
-        replied = False
+        reply = None
         if conversation_id:
-            replied = client.has_reply_from_me(conversation_id, received_at)
+            reply = client.latest_reply_from_me(conversation_id, received_at)
+        reply_line = (
+            f'Owner\'s latest reply in this thread since it arrived: "{reply[:300]}"'
+            if reply
+            else "Owner has not replied in this thread since it arrived."
+        )
 
         user_message = (
             f"Subject: {email.subject}\n"
             f"From: {email.from_display}\n"
             f"Received: {email.received_date} ({(now - received_at).days} days ago)\n"
             f"Today: {now.date().isoformat()}\n"
-            f"Owner replied in this thread since it arrived: {'yes' if replied else 'no'}\n\n"
+            f"{reply_line}\n\n"
             f"Body:\n{email.get_body_text()[:_BODY_LIMIT]}"
         )
         data = retriage_verdict(SYSTEM_PROMPT, user_message)
@@ -1284,7 +1322,7 @@ git commit -m "infra: sweep publishes to inbox-messages + gets Anthropic key"
 In the **Project state** section, extend the deferred-folder-moves paragraph (or add a sibling paragraph):
 
 ```markdown
-**Inbox grooming (shipped):** the 5 AM sweep also grooms what it can't file. Urgent messages older than 3 days are re-triaged by Claude using the message content and a did-Ben-reply signal: `still_urgent` re-holds them via a `keep_until:+3d` tag (re-checked every 3 days), `needs_response` demotes them to `respond`/`reply_required`, `resolved_or_expired` archives them. Verdicts are policy, never human feedback — they don't touch `current_label`. Untagged Inbox mail older than 24 h is republished (≤50/night) to the `inbox-messages` topic for normal classification; the processor repairs missing tags on duplicate notifications, so republishing is a safe universal repair. See `docs/superpowers/specs/2026-07-17-inbox-grooming-design.md`.
+**Inbox grooming (shipped):** the 5 AM sweep also grooms what it can't file. Urgent messages older than 3 days are re-triaged by Claude using the message content and the text of Ben's latest reply in the thread (if any): `still_urgent` re-holds them via a `keep_until:+3d` tag (re-checked every 3 days), `needs_response` demotes them to `respond`/`reply_required`, `resolved_or_expired` archives them. Verdicts are policy, never human feedback — they don't touch `current_label`. Untagged Inbox mail older than 24 h is republished (≤50/night) to the `inbox-messages` topic for normal classification; the processor repairs missing tags on duplicate notifications, so republishing is a safe universal repair. See `docs/superpowers/specs/2026-07-17-inbox-grooming-design.md`.
 ```
 
 Update the **Sweep** row in the Stack table:
