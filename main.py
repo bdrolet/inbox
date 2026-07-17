@@ -26,6 +26,7 @@ so the inbox-label CF cold-starts without loading the model (~518 MiB).
 import base64
 import json
 import logging
+import os
 
 # force=True installs a fresh stderr StreamHandler at INFO even if the Cloud
 # Functions/gunicorn runtime already configured the root logger before this module
@@ -123,12 +124,24 @@ def sweep(request):
     from datetime import datetime
     from zoneinfo import ZoneInfo
 
+    from clients import pubsub
     from clients.graph import get_graph_client
+    from services.retriage import evaluate
     from services.sweep import run_sweep
+
+    topic = os.environ.get("INBOX_MESSAGES_TOPIC", "inbox-messages")
+
+    def republish(message_id: str) -> None:
+        pubsub.publish(topic, {"resourceData": {"id": message_id}})
 
     otel.flush()
     try:
-        counts = run_sweep(get_graph_client(), datetime.now(ZoneInfo("America/New_York")))
+        counts = run_sweep(
+            get_graph_client(),
+            datetime.now(ZoneInfo("America/New_York")),
+            evaluate=evaluate,
+            republish=republish,
+        )
         for action, n in counts.items():
             otel.sweep_actions.add(n, {"action": action})
         return (counts, 200)
