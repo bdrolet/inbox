@@ -112,3 +112,34 @@ def test_get_member_groups_403_raises_when_requested(monkeypatch):
     monkeypatch.setattr(requests, "get", lambda *a, **k: _Resp(status_code=403))
     with pytest.raises(requests.exceptions.HTTPError):
         _client().get_member_groups(raise_on_error=True)
+
+
+def test_list_inbox_categories_includes_received_and_conversation(monkeypatch):
+    seen = {}
+
+    def fake_get(url, headers=None, params=None):
+        seen["url"] = url
+        return _Resp(
+            json_data={
+                "value": [
+                    {
+                        "id": "m1",
+                        "categories": ["urgent", "P0"],
+                        "receivedDateTime": "2026-07-10T12:00:00Z",
+                        "conversationId": "conv1",
+                    },
+                    {"id": "m2"},
+                ]
+            }
+        )
+
+    monkeypatch.setattr(requests, "get", fake_get)
+    rows = _client().list_inbox_categories()
+    assert "receivedDateTime,conversationId" in seen["url"] or "receivedDateTime" in seen["url"]
+    assert rows[0] == {
+        "id": "m1",
+        "categories": ["urgent", "P0"],
+        "receivedDateTime": "2026-07-10T12:00:00Z",
+        "conversationId": "conv1",
+    }
+    assert rows[1] == {"id": "m2", "categories": [], "receivedDateTime": None, "conversationId": None}
