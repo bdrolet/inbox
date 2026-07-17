@@ -12,7 +12,7 @@ See `docs/inbox-architecture.md` for the full design and `docs/v1-implementation
 
 **Tasks-service extraction (shipped):** inbox owns classification only — it no longer talks to Asana. For every processed email (all five categories) the dispatch handler publishes one `email_classified` event, and the labeling service publishes `label_applied` feedback events (human confirmations/corrections), both to the inbox-owned `email-events` Pub/Sub topic. The separate `tasks` repo (github.com/bdrolet/tasks) subscribes to that topic and owns all Asana task policy, enrichment (summaries, deadlines), and creation. Urgent ntfy pushes still click through to the source email via the `/r/{uuid}` redirector; the Asana task itself now shows up moments later, created by the tasks service. See `docs/superpowers/plans/2026-07-16-email-events-extraction.md`.
 
-Ready to start **Phase 5** (bootstrap labels, decommission Cloud Run Job).
+**Phase 5 remainder:** the old Cloud Run Job is already decommissioned (`docs/v1-implementation.md`); what's left is seeding the vector store with human-confirmed labels — an interactive `scripts/bootstrap_labels.py` session driven by Ben.
 
 ## Development workflow
 
@@ -55,7 +55,7 @@ api/              FastAPI app (Cloud Run service inbox-api)
   routers/        search.py (mailbox/group/DB search), emails.py (draft, attach, send), redirect.py (/r/{uuid} → live webLink)
 main.py           Processor + sweep Cloud Function entry points (Pub/Sub event trigger; sweep is HTTP)
 scripts/          Entry points and one-off jobs
-  analyze_emails.py  Existing Cloud Run Job (kept until Phase 5)
+  bootstrap_labels.py  Interactive human-labeling session (seeds current_label)
   migrate_db.py   One-shot schema migration
 terraform/        GCP resources (Cloud Functions, Pub/Sub, Cloud SQL, Scheduler, Secrets, IAM)
 docs/             Architecture and implementation docs
@@ -164,7 +164,7 @@ CLOUD_SQL_CONNECTION_NAME=bens-project-462804:us-central1:inbox \
 | 4 | **Complete** | ntfy push notifications, Outlook color-category tagging, human feedback loop |
 | — | **Complete** | Deferred folder moves: `inbox-sweep` CF (5 AM ET) files by tag, `keep_until` holds, immutable IDs + `/r/{uuid}` redirector |
 | — | **Complete** | Tasks-service extraction: `email_classified`/`label_applied` events on the `email-events` topic; Asana task creation + enrichment moved to the tasks repo |
-| 5 | **Next** | Bootstrap labels, decommission Cloud Run Job |
+| 5 | **Partial** | Cloud Run Job decommissioned (see `docs/v1-implementation.md` Phase 5); remaining: bootstrap labels via `scripts/bootstrap_labels.py` (interactive) |
 
 ## Known issues / gotchas
 
