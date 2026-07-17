@@ -34,6 +34,13 @@ class SweepDecision:
     strip_categories: list[str] = field(default_factory=list)
 
 
+@dataclass
+class RetriageOutcome:
+    verdict: str
+    folder: str | None
+    new_categories: list[str]
+
+
 def _parse_keep_until(value: str) -> datetime | None:
     """Parse the value after 'keep_until:'. Returns the ET instant at which the
     hold elapses, or None if unparseable. A bare date holds through the end of
@@ -58,6 +65,30 @@ def parse_graph_datetime(value: str | None) -> datetime | None:
         return datetime.fromisoformat(value.replace("Z", "+00:00"))
     except ValueError:
         return None
+
+
+def apply_verdict(verdict: str, categories: list[str], now: datetime) -> RetriageOutcome:
+    """Map a re-triage verdict onto concrete tag/folder changes. Unknown
+    verdicts fail safe to still_urgent (nothing leaves the Inbox)."""
+    base = [c for c in categories if not c.startswith(KEEP_UNTIL_PREFIX)]
+    if verdict == "needs_response":
+        return RetriageOutcome(
+            verdict=verdict,
+            folder="reply_required",
+            new_categories=["respond" if c == "urgent" else c for c in base],
+        )
+    if verdict == "resolved_or_expired":
+        return RetriageOutcome(
+            verdict=verdict,
+            folder="Archive",
+            new_categories=[c for c in base if c != "urgent"],
+        )
+    hold = (now + timedelta(days=RETRIAGE_HOLD_DAYS)).date().isoformat()
+    return RetriageOutcome(
+        verdict="still_urgent",
+        folder=None,
+        new_categories=base + [f"{KEEP_UNTIL_PREFIX}{hold}"],
+    )
 
 
 def decide(

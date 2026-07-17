@@ -1,7 +1,12 @@
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from services.sweep_rules import decide, folder_for_category, parse_graph_datetime
+from services.sweep_rules import (
+    apply_verdict,
+    decide,
+    folder_for_category,
+    parse_graph_datetime,
+)
 
 ET = ZoneInfo("America/New_York")
 
@@ -111,3 +116,38 @@ def test_decide_untagged_with_any_keep_until_never_republishes():
 def test_decide_tagged_messages_unchanged():
     d = decide(["reference", "P3"], _now(2026, 7, 14), _received(2026, 7, 1))
     assert d.action == "move" and d.folder == "Archive"
+
+
+def test_apply_verdict_still_urgent_adds_hold():
+    out = apply_verdict("still_urgent", ["urgent", "P0"], _now(2026, 7, 14))
+    assert out.folder is None
+    assert out.new_categories == ["urgent", "P0", "keep_until:2026-07-17"]
+    assert out.verdict == "still_urgent"
+
+
+def test_apply_verdict_still_urgent_replaces_old_hold():
+    out = apply_verdict(
+        "still_urgent", ["urgent", "keep_until:2026-07-10"], _now(2026, 7, 14)
+    )
+    assert out.new_categories == ["urgent", "keep_until:2026-07-17"]
+
+
+def test_apply_verdict_needs_response_demotes():
+    out = apply_verdict("needs_response", ["urgent", "P0"], _now(2026, 7, 14))
+    assert out.folder == "reply_required"
+    assert out.new_categories == ["respond", "P0"]
+
+
+def test_apply_verdict_resolved_archives():
+    out = apply_verdict(
+        "resolved_or_expired", ["urgent", "P0", "keep_until:2026-07-01"], _now(2026, 7, 14)
+    )
+    assert out.folder == "Archive"
+    assert out.new_categories == ["P0"]
+
+
+def test_apply_verdict_unknown_treated_as_still_urgent():
+    out = apply_verdict("banana", ["urgent"], _now(2026, 7, 14))
+    assert out.folder is None
+    assert out.verdict == "still_urgent"
+    assert out.new_categories == ["urgent", "keep_until:2026-07-17"]
