@@ -145,9 +145,9 @@ CLOUD_SQL_CONNECTION_NAME=bens-project-462804:us-central1:inbox \
 | `msal-token-cache` | Processor CF + renew CF + `inbox-api` — MSAL refresh token |
 | `inbox-db-password` | Processor CF + `inbox-api` — Cloud SQL password |
 | `ntfy-token` | Processor CF — ntfy server access token |
-| `webhook-label-token` | Processor CF + webhook CF — authenticates `/label` action button callbacks |
-| `grafana-otlp-endpoint`, `grafana-otlp-token` | Processor + webhook CFs — OTel metrics/traces export to Grafana Cloud |
-| `asana-api-key` | Kept for the tasks repo (github.com/bdrolet/tasks) — inbox no longer reads it |
+| `webhook-label-token` | Processor CF + webhook CF — authenticates `/label` action button callbacks. **Owned by the platform state (`~/src/infra`)**; read here via data source |
+| `grafana-otlp-endpoint`, `grafana-otlp-token` | Processor + webhook CFs — OTel metrics/traces export to Grafana Cloud. **Owned by the platform state (`~/src/infra`)**; read here via data source |
+| `asana-api-key` | **Owned by the platform state (`~/src/infra`)** for the tasks repo (github.com/bdrolet/tasks) — inbox no longer references it |
 | `hubspot-token` | Processor CF — HubSpot contact upsert + email logging |
 | `google-calendar-client-id`, `google-calendar-client-secret`, `google-calendar-refresh-token` | Processor CF — Google Calendar responses |
 | `hf-token` | Processor CF — Hugging Face auth for bge model download |

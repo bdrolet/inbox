@@ -51,19 +51,19 @@ resource "google_cloudfunctions2_function" "webhook" {
     secret_environment_variables {
       key        = "WEBHOOK_LABEL_TOKEN"
       project_id = var.project_id
-      secret     = google_secret_manager_secret.secrets["webhook-label-token"].secret_id
+      secret     = data.google_secret_manager_secret.shared["webhook-label-token"].secret_id
       version    = "latest"
     }
     secret_environment_variables {
       key        = "GRAFANA_OTLP_ENDPOINT"
       project_id = var.project_id
-      secret     = google_secret_manager_secret.secrets["grafana-otlp-endpoint"].secret_id
+      secret     = data.google_secret_manager_secret.shared["grafana-otlp-endpoint"].secret_id
       version    = "latest"
     }
     secret_environment_variables {
       key        = "GRAFANA_OTLP_TOKEN"
       project_id = var.project_id
-      secret     = google_secret_manager_secret.secrets["grafana-otlp-token"].secret_id
+      secret     = data.google_secret_manager_secret.shared["grafana-otlp-token"].secret_id
       version    = "latest"
     }
   }
@@ -212,7 +212,7 @@ resource "google_cloudfunctions2_function" "process" {
     available_memory      = "2Gi"
     environment_variables = {
       GCP_PROJECT_ID            = var.project_id
-      CLOUD_SQL_CONNECTION_NAME = google_sql_database_instance.inbox.connection_name
+      CLOUD_SQL_CONNECTION_NAME = data.google_sql_database_instance.inbox.connection_name
       POSTGRES_USER             = var.db_user
       POSTGRES_DB               = "app"
       MSAL_SECRET_NAME          = "msal-token-cache"
@@ -263,19 +263,19 @@ resource "google_cloudfunctions2_function" "process" {
     secret_environment_variables {
       key        = "WEBHOOK_LABEL_TOKEN"
       project_id = var.project_id
-      secret     = google_secret_manager_secret.secrets["webhook-label-token"].secret_id
+      secret     = data.google_secret_manager_secret.shared["webhook-label-token"].secret_id
       version    = "latest"
     }
     secret_environment_variables {
       key        = "GRAFANA_OTLP_ENDPOINT"
       project_id = var.project_id
-      secret     = google_secret_manager_secret.secrets["grafana-otlp-endpoint"].secret_id
+      secret     = data.google_secret_manager_secret.shared["grafana-otlp-endpoint"].secret_id
       version    = "latest"
     }
     secret_environment_variables {
       key        = "GRAFANA_OTLP_TOKEN"
       project_id = var.project_id
-      secret     = google_secret_manager_secret.secrets["grafana-otlp-token"].secret_id
+      secret     = data.google_secret_manager_secret.shared["grafana-otlp-token"].secret_id
       version    = "latest"
     }
     secret_environment_variables {
@@ -319,7 +319,7 @@ resource "google_cloudfunctions2_function" "process" {
 
   depends_on = [
     google_project_service.apis,
-    google_sql_database_instance.inbox,
+    data.google_sql_database_instance.inbox,
   ]
 }
 
@@ -349,7 +349,7 @@ resource "google_cloudfunctions2_function" "calendar_action" {
     available_memory      = "512Mi"
     environment_variables = {
       GCP_PROJECT_ID            = var.project_id
-      CLOUD_SQL_CONNECTION_NAME = google_sql_database_instance.inbox.connection_name
+      CLOUD_SQL_CONNECTION_NAME = data.google_sql_database_instance.inbox.connection_name
       POSTGRES_USER             = var.db_user
       POSTGRES_DB               = "app"
       MSAL_SECRET_NAME          = "msal-token-cache"
@@ -407,7 +407,7 @@ resource "google_cloudfunctions2_function" "calendar_action" {
 
   depends_on = [
     google_project_service.apis,
-    google_sql_database_instance.inbox,
+    data.google_sql_database_instance.inbox,
   ]
 }
 
@@ -437,7 +437,7 @@ resource "google_cloudfunctions2_function" "label" {
     available_memory      = "512Mi"
     environment_variables = {
       GCP_PROJECT_ID            = var.project_id
-      CLOUD_SQL_CONNECTION_NAME = google_sql_database_instance.inbox.connection_name
+      CLOUD_SQL_CONNECTION_NAME = data.google_sql_database_instance.inbox.connection_name
       POSTGRES_USER             = var.db_user
       POSTGRES_DB               = "app"
       OTEL_BSP_MAX_QUEUE_SIZE   = "16384"
@@ -453,13 +453,13 @@ resource "google_cloudfunctions2_function" "label" {
     secret_environment_variables {
       key        = "GRAFANA_OTLP_ENDPOINT"
       project_id = var.project_id
-      secret     = google_secret_manager_secret.secrets["grafana-otlp-endpoint"].secret_id
+      secret     = data.google_secret_manager_secret.shared["grafana-otlp-endpoint"].secret_id
       version    = "latest"
     }
     secret_environment_variables {
       key        = "GRAFANA_OTLP_TOKEN"
       project_id = var.project_id
-      secret     = google_secret_manager_secret.secrets["grafana-otlp-token"].secret_id
+      secret     = data.google_secret_manager_secret.shared["grafana-otlp-token"].secret_id
       version    = "latest"
     }
   }
@@ -473,7 +473,7 @@ resource "google_cloudfunctions2_function" "label" {
 
   depends_on = [
     google_project_service.apis,
-    google_sql_database_instance.inbox,
+    data.google_sql_database_instance.inbox,
   ]
 }
 
@@ -527,13 +527,13 @@ resource "google_cloudfunctions2_function" "sweep" {
     secret_environment_variables {
       key        = "GRAFANA_OTLP_ENDPOINT"
       project_id = var.project_id
-      secret     = google_secret_manager_secret.secrets["grafana-otlp-endpoint"].secret_id
+      secret     = data.google_secret_manager_secret.shared["grafana-otlp-endpoint"].secret_id
       version    = "latest"
     }
     secret_environment_variables {
       key        = "GRAFANA_OTLP_TOKEN"
       project_id = var.project_id
-      secret     = google_secret_manager_secret.secrets["grafana-otlp-token"].secret_id
+      secret     = data.google_secret_manager_secret.shared["grafana-otlp-token"].secret_id
       version    = "latest"
     }
   }

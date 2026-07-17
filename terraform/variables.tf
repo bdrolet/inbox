@@ -69,35 +69,8 @@ variable "ntfy_topic" {
   default     = ""
 }
 
-variable "webhook_label_token" {
-  description = "Bearer token required on /label requests from ntfy action buttons. Generate with: openssl rand -hex 32"
-  type        = string
-  sensitive   = true
-}
-
-variable "grafana_otlp_endpoint" {
-  description = "Grafana Cloud OTLP gateway URL (e.g. https://otlp-gateway-prod-us-central-0.grafana.net/otlp)"
-  type        = string
-  sensitive   = true
-  default     = ""
-}
-
-variable "grafana_otlp_token" {
-  description = "Grafana Cloud OTLP Basic Auth token: base64(instance_id:api_key)"
-  type        = string
-  sensitive   = true
-  default     = ""
-}
-
 variable "hf_token" {
   description = "HuggingFace API token (read scope) — prevents rate limiting on BGE model download during cold starts"
-  type        = string
-  sensitive   = true
-  default     = ""
-}
-
-variable "asana_api_key" {
-  description = "Asana personal access token — stored in Secret Manager for the tasks repo (github.com/bdrolet/tasks); inbox no longer reads it"
   type        = string
   sensitive   = true
   default     = ""
