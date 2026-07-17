@@ -8,6 +8,12 @@ from zoneinfo import ZoneInfo
 ET = ZoneInfo("America/New_York")
 KEEP_UNTIL_PREFIX = "keep_until:"
 
+RETRIAGE_AFTER = timedelta(days=3)
+REPUBLISH_AFTER = timedelta(hours=24)
+RETRIAGE_HOLD_DAYS = 3
+REPUBLISH_NIGHTLY_CAP = 50
+KNOWN_CATEGORIES = {"urgent", "respond", "review", "reference", "ignore"}
+
 _CATEGORY_FOLDER = {
     "reference": "Archive",
     "ignore": "Archive",
@@ -23,7 +29,7 @@ def folder_for_category(category: str) -> str | None:
 
 @dataclass
 class SweepDecision:
-    action: Literal["move", "hold", "skip"]
+    action: Literal["move", "hold", "skip", "retriage", "republish"]
     folder: str | None = None
     strip_categories: list[str] = field(default_factory=list)
 
@@ -44,7 +50,19 @@ def _parse_keep_until(value: str) -> datetime | None:
         return None
 
 
-def decide(categories: list[str], now: datetime) -> SweepDecision:
+def parse_graph_datetime(value: str | None) -> datetime | None:
+    """Graph ISO timestamp ('...Z') -> aware datetime, or None if absent/bad."""
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def decide(
+    categories: list[str], now: datetime, received_at: datetime | None = None
+) -> SweepDecision:
     keep_tags = [c for c in categories if c.startswith(KEEP_UNTIL_PREFIX)]
     for tag in keep_tags:
         elapses = _parse_keep_until(tag[len(KEEP_UNTIL_PREFIX) :])
@@ -55,4 +73,14 @@ def decide(categories: list[str], now: datetime) -> SweepDecision:
         folder = folder_for_category(c)
         if folder is not None:
             return SweepDecision(action="move", folder=folder, strip_categories=keep_tags)
+
+    if "urgent" in categories:
+        if received_at is not None and now - received_at > RETRIAGE_AFTER:
+            return SweepDecision(action="retriage")
+        return SweepDecision(action="skip")
+
+    tagged = any(c in KNOWN_CATEGORIES for c in categories)
+    if not tagged and not keep_tags:
+        if received_at is not None and now - received_at > REPUBLISH_AFTER:
+            return SweepDecision(action="republish")
     return SweepDecision(action="skip")
