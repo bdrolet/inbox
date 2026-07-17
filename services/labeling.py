@@ -5,6 +5,7 @@ import clients.otel as otel
 from clients.db import get_conn
 from repo import classifications
 from repo.embeddings import set_current_importance, set_current_label
+from services import email_events
 
 logger = logging.getLogger(__name__)
 
@@ -37,3 +38,15 @@ def apply_label(
         conn.commit()
     logger.debug("Label %r applied and embedding updated for %s", label, message_id)
     otel.human_feedback.add(1, {"source": source, "category": label})
+    try:
+        email_events.publish(
+            {
+                "event": "label_applied",
+                "message_id": message_id,
+                "task_gid": None,  # inbox doesn't track task GIDs; tasks resolves via DB / external:{message_id}
+                "label": label,
+                "source": source,
+            }
+        )
+    except Exception:
+        logger.exception("label_applied publish failed for message_id=%s", message_id)

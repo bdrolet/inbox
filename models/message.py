@@ -9,6 +9,8 @@ class Message(TypedDict):
     sender: str  # email address or phone number
     sender_display: str  # human-readable name
     subject: str  # "" if absent (never None)
+    to: list[str]  # recipient addresses
+    cc: list[str]  # cc addresses
     body: str  # plain text
     body_html: Optional[str]  # raw HTML body when content type is html, else None
     received_at: datetime

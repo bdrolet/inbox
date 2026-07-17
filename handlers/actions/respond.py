@@ -1,35 +1,23 @@
 import logging
 
-import clients.asana as asana
 from clients.graph import get_graph_client
 from handlers.actions._shared import prepare
 from models.message import Message
 from models.types import Classification
 from services import draft_reply as draft_svc
+from services import email_events
 
 logger = logging.getLogger(__name__)
 
 
-def handle(classification: Classification, msg: Message) -> None:
-    web_link, summary, due_date, invite = prepare(msg, classification)
+def handle(classification: Classification, msg: Message) -> dict:
+    invite = prepare(msg)
+    points, links = email_events.invite_extras(str(msg["id"]), invite)
+    extras: dict = {"seed_key_points": points or None, "seed_links": links or None}
 
     try:
         draft_text = draft_svc.generate(msg)
-        draft_link = get_graph_client().create_reply_draft(msg["external_id"], draft_text)
-        task = asana.create_task(
-            msg,
-            classification,
-            web_link=web_link,
-            due_date=due_date,
-            draft_link=draft_link,
-            summary=summary,
-            invite=invite,
-        )
-        logger.info(
-            "Respond task created: gid=%s draft=%s for message_id=%s",
-            task.gid if task else None,
-            draft_link,
-            msg["id"],
-        )
+        extras["draft_link"] = get_graph_client().create_reply_draft(msg["external_id"], draft_text)
     except Exception:
-        logger.exception("Respond task/draft creation failed for message_id=%s", msg["id"])
+        logger.exception("Draft generation failed for message_id=%s", msg["id"])
+    return extras

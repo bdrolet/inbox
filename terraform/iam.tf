@@ -71,13 +71,6 @@ resource "google_secret_manager_secret_iam_member" "process_cf_grafana" {
   member    = "serviceAccount:${google_service_account.process_cf.email}"
 }
 
-# Read the Asana API key from Secret Manager
-resource "google_secret_manager_secret_iam_member" "process_cf_asana" {
-  secret_id = google_secret_manager_secret.secrets["asana-api-key"].secret_id
-  role      = "roles/secretmanager.secretAccessor"
-  member    = "serviceAccount:${google_service_account.process_cf.email}"
-}
-
 resource "google_secret_manager_secret_iam_member" "process_cf_hubspot" {
   secret_id = google_secret_manager_secret.secrets["hubspot-token"].secret_id
   role      = "roles/secretmanager.secretAccessor"
@@ -95,6 +88,14 @@ resource "google_secret_manager_secret_iam_member" "process_cf_google_calendar" 
   secret_id = google_secret_manager_secret.secrets[each.key].secret_id
   role      = "roles/secretmanager.secretAccessor"
   member    = "serviceAccount:${google_service_account.process_cf.email}"
+}
+
+# Publish email_classified / label_applied domain events (consumed by the
+# tasks repo — github.com/bdrolet/tasks)
+resource "google_pubsub_topic_iam_member" "process_cf_email_events_publisher" {
+  topic  = google_pubsub_topic.email_events.name
+  role   = "roles/pubsub.publisher"
+  member = "serviceAccount:${google_service_account.process_cf.email}"
 }
 
 # ---------------------------------------------------------------------------

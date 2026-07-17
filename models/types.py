@@ -1,4 +1,4 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 
@@ -26,19 +26,6 @@ class Classification:
     tags: list[str]
     reasoning: str
     importance: Importance = Importance.P2
-    tag_gids: list[str] = field(default_factory=list)
-
-
-@dataclass
-class EmailSummary:
-    key_points: list[str] = field(default_factory=list)
-    relevant_links: list[tuple[str, str]] = field(default_factory=list)  # (url, label)
-
-
-@dataclass
-class CreatedTask:
-    gid: str
-    permalink_url: str
 
 
 @dataclass

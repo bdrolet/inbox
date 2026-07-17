@@ -3,7 +3,7 @@ import logging
 from handlers.actions import respond, review, urgent
 from models.message import Message
 from models.types import Category, Classification
-from services import archiving
+from services import archiving, email_events
 
 logger = logging.getLogger(__name__)
 
@@ -25,11 +25,18 @@ def dispatch(classification: Classification, msg: Message) -> None:
         archiving.apply_tags(msg, classification)
     except Exception:
         logger.exception("apply_tags failed for %s", msg.get("id"))
+
+    extras: dict = {}
     handler = _HANDLERS.get(classification.category)
     if handler:
         try:
-            handler(classification, msg)
+            extras = handler(classification, msg) or {}
         except Exception:
             logger.exception(
                 "Action handler failed for %s/%s", classification.category.value, msg.get("id")
             )
+
+    try:
+        email_events.publish(email_events.build_event(msg, classification, extras))
+    except Exception:
+        logger.exception("email_classified publish failed for %s", msg.get("id"))

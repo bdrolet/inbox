@@ -4,7 +4,7 @@ Full pipeline runner: processes a real email through the complete inbox pipeline
 Equivalent to what the Cloud Function does when triggered by a Pub/Sub message.
 
 Runs: fetch → normalize → embed → classify → store → dispatch
-(folder move + Asana task creation + optional ntfy notification)
+(tagging + email_classified event publish + optional ntfy notification)
 
 Usage:
   python run-pipeline-local.py [--message-id <graph_message_id>]
@@ -37,7 +37,7 @@ _REQUIRED = [
     "CLIENT_ID", "CLIENT_SECRET", "TENANT_ID",
     "ANTHROPIC_API_KEY",
     "CLOUD_SQL_CONNECTION_NAME", "POSTGRES_USER", "POSTGRES_PASSWORD", "POSTGRES_DB",
-    "ASANA_API_KEY", "ASANA_PROJECT_ID", "WEBHOOK_URL", "WEBHOOK_LABEL_TOKEN",
+    "WEBHOOK_URL", "WEBHOOK_LABEL_TOKEN",
 ]
 missing = [v for v in _REQUIRED if not os.environ.get(v)]
 if missing:

@@ -1,30 +1,10 @@
-import logging
-
-import clients.asana as asana
 from handlers.actions._shared import prepare
 from models.message import Message
 from models.types import Classification
+from services import email_events
 
-logger = logging.getLogger(__name__)
 
-
-def handle(classification: Classification, msg: Message) -> None:
-    web_link, summary, due_date, invite = prepare(msg, classification)
-
-    try:
-        task = asana.create_task(
-            msg,
-            classification,
-            web_link=web_link,
-            due_date=due_date,
-            summary=summary,
-            invite=invite,
-        )
-        logger.info(
-            "Asana task created: gid=%s due=%s for message_id=%s",
-            task.gid if task else None,
-            due_date,
-            msg["id"],
-        )
-    except Exception:
-        logger.exception("Asana task creation failed for message_id=%s", msg["id"])
+def handle(classification: Classification, msg: Message) -> dict:
+    invite = prepare(msg)
+    points, links = email_events.invite_extras(str(msg["id"]), invite)
+    return {"seed_key_points": points or None, "seed_links": links or None}
