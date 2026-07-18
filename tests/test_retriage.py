@@ -74,7 +74,5 @@ def test_evaluate_fail_safe_on_fetch_failure(monkeypatch):
 
 
 def test_evaluate_handles_missing_conversation(monkeypatch):
-    monkeypatch.setattr(
-        retriage, "retriage_verdict", lambda s, u: {"verdict": "needs_response"}
-    )
+    monkeypatch.setattr(retriage, "retriage_verdict", lambda s, u: {"verdict": "needs_response"})
     assert retriage.evaluate(FakeClient(), "m1", None, RECEIVED, NOW) == "needs_response"

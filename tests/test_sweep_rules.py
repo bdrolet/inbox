@@ -88,9 +88,7 @@ def test_decide_urgent_without_received_at_skips():
 
 
 def test_decide_keep_until_defers_retriage():
-    d = decide(
-        ["urgent", "keep_until:2026-07-20"], _now(2026, 7, 14), _received(2026, 7, 1)
-    )
+    d = decide(["urgent", "keep_until:2026-07-20"], _now(2026, 7, 14), _received(2026, 7, 1))
     assert d.action == "hold"
 
 
@@ -126,9 +124,7 @@ def test_apply_verdict_still_urgent_adds_hold():
 
 
 def test_apply_verdict_still_urgent_replaces_old_hold():
-    out = apply_verdict(
-        "still_urgent", ["urgent", "keep_until:2026-07-10"], _now(2026, 7, 14)
-    )
+    out = apply_verdict("still_urgent", ["urgent", "keep_until:2026-07-10"], _now(2026, 7, 14))
     assert out.new_categories == ["urgent", "keep_until:2026-07-17"]
 
 

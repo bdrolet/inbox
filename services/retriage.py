@@ -69,9 +69,7 @@ def evaluate(
         )
         data = retriage_verdict(SYSTEM_PROMPT, user_message)
         verdict = data.get("verdict", "")
-        logger.info(
-            "retriage %s -> %s (%s)", message_id, verdict, data.get("reason", "")
-        )
+        logger.info("retriage %s -> %s (%s)", message_id, verdict, data.get("reason", ""))
         if verdict not in VERDICTS:
             return "still_urgent"
         return verdict

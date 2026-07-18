@@ -59,9 +59,7 @@ def run(notification: dict, model, context=None) -> None:
             msg = normalize(email, raw=notification)
 
             with get_conn() as conn:
-                existing = messages.get_by_external_id(
-                    conn, msg["source"], msg["external_id"]
-                )
+                existing = messages.get_by_external_id(conn, msg["source"], msg["external_id"])
                 if existing:
                     logger.debug(f"Duplicate {msg['external_id']} — repairing if untagged")
                     otel.emails_duplicates.add(1)

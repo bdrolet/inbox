@@ -45,9 +45,7 @@ def test_repair_skips_already_tagged_message(monkeypatch):
 def test_repair_skips_when_no_stored_classification(monkeypatch):
     import handlers.pipeline as pipeline
 
-    monkeypatch.setattr(
-        pipeline.classifications, "latest_for_message", lambda conn, mid: None
-    )
+    monkeypatch.setattr(pipeline.classifications, "latest_for_message", lambda conn, mid: None)
     graph = FakeGraph()
     _repair_tag_if_missing(None, graph, FakeEmail(categories=[]), "db-1", "ext-1")
     assert graph.tagged == []
@@ -65,7 +63,9 @@ def test_repair_preserves_unrecognized_live_tags(monkeypatch):
     _repair_tag_if_missing(
         None, graph, FakeEmail(categories=["Travel", "keep_until:2026-08-01"]), "db-1", "ext-1"
     )
-    assert graph.tagged == [("ext-1", ["respond", "P1", "invoice", "Travel", "keep_until:2026-08-01"])]
+    assert graph.tagged == [
+        ("ext-1", ["respond", "P1", "invoice", "Travel", "keep_until:2026-08-01"])
+    ]
 
 
 def test_repair_handles_null_importance_and_tags(monkeypatch):

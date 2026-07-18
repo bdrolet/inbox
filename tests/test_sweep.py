@@ -62,16 +62,27 @@ def test_run_sweep_retriage_verdict_paths():
     stale = "2026-07-01T12:00:00Z"
     client = FakeClient(
         [
-            {"id": "keep", "categories": ["urgent"], "receivedDateTime": stale,
-             "conversationId": "c1"},
-            {"id": "demote", "categories": ["urgent", "P0"], "receivedDateTime": stale,
-             "conversationId": "c2"},
-            {"id": "done", "categories": ["urgent"], "receivedDateTime": stale,
-             "conversationId": "c3"},
+            {
+                "id": "keep",
+                "categories": ["urgent"],
+                "receivedDateTime": stale,
+                "conversationId": "c1",
+            },
+            {
+                "id": "demote",
+                "categories": ["urgent", "P0"],
+                "receivedDateTime": stale,
+                "conversationId": "c2",
+            },
+            {
+                "id": "done",
+                "categories": ["urgent"],
+                "receivedDateTime": stale,
+                "conversationId": "c3",
+            },
         ]
     )
-    verdicts = {"keep": "still_urgent", "demote": "needs_response",
-                "done": "resolved_or_expired"}
+    verdicts = {"keep": "still_urgent", "demote": "needs_response", "done": "resolved_or_expired"}
 
     def evaluate(c, message_id, conversation_id, received_at, now_):
         return verdicts[message_id]
@@ -154,8 +165,14 @@ def test_run_sweep_retriage_keep_reports_errored_on_tag_failure():
             return False
 
     client = UntaggableClient(
-        [{"id": "keep", "categories": ["urgent"], "receivedDateTime": stale,
-          "conversationId": "c1"}]
+        [
+            {
+                "id": "keep",
+                "categories": ["urgent"],
+                "receivedDateTime": stale,
+                "conversationId": "c1",
+            }
+        ]
     )
 
     def evaluate(c, message_id, conversation_id, received_at, now_):

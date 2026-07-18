@@ -38,9 +38,7 @@ def exists(conn: psycopg.Connection, source: str, external_id: str) -> bool:
     return row is not None
 
 
-def get_by_external_id(
-    conn: psycopg.Connection, source: str, external_id: str
-) -> Optional[dict]:
+def get_by_external_id(conn: psycopg.Connection, source: str, external_id: str) -> Optional[dict]:
     return conn.execute(
         "SELECT * FROM messages WHERE source = %s AND external_id = %s",
         (source, external_id),
