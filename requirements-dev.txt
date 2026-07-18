@@ -14,3 +14,4 @@ anthropic>=0.25
 google-cloud-pubsub>=2.18.0
 opentelemetry-sdk>=1.24
 opentelemetry-exporter-otlp-proto-http>=1.24
+psycopg[binary]>=3.1  # tests/test_pipeline_repair.py imports the real repo/ modules

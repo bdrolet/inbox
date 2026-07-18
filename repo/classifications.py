@@ -39,3 +39,16 @@ def insert(
         ),
     ).fetchone()
     return str(row["id"])
+
+
+def latest_for_message(conn: psycopg.Connection, message_id: str) -> Optional[dict]:
+    return conn.execute(
+        """
+        SELECT category, importance, tags
+        FROM classifications
+        WHERE message_id = %s
+        ORDER BY created_at DESC
+        LIMIT 1
+        """,
+        (message_id,),
+    ).fetchone()

@@ -384,7 +384,7 @@ class GraphEmailClient:
 
         endpoint = f"{self._read_base(mailbox)}/messages/{email_id}"
         params = {
-            "$select": "id,subject,from,toRecipients,ccRecipients,bccRecipients,receivedDateTime,sentDateTime,body,bodyPreview,isRead,hasAttachments,attachments,webLink"
+            "$select": "id,subject,from,toRecipients,ccRecipients,bccRecipients,receivedDateTime,sentDateTime,body,bodyPreview,isRead,hasAttachments,attachments,webLink,categories"
         }
         response = requests.get(endpoint, headers=self.get_headers(immutable=True), params=params)
         if response.status_code == 404:
@@ -1026,17 +1026,57 @@ class GraphEmailClient:
             return None
 
     def list_inbox_categories(self) -> list[dict]:
-        """Return [{'id', 'categories'}] for all Inbox messages (immutable IDs)."""
+        """Return [{'id', 'categories', 'receivedDateTime', 'conversationId'}]
+        for all Inbox messages (immutable IDs)."""
         results: list[dict] = []
-        url = f"{self.graph_endpoint}/me/mailFolders/inbox/messages?$select=id,categories&$top=100"
+        url = (
+            f"{self.graph_endpoint}/me/mailFolders/inbox/messages"
+            "?$select=id,categories,receivedDateTime,conversationId&$top=100"
+        )
         while url:
             resp = requests.get(url, headers=self.get_headers(immutable=True))
             resp.raise_for_status()
             data = resp.json()
             for m in data.get("value", []):
-                results.append({"id": m["id"], "categories": m.get("categories", [])})
+                results.append(
+                    {
+                        "id": m["id"],
+                        "categories": m.get("categories", []),
+                        "receivedDateTime": m.get("receivedDateTime"),
+                        "conversationId": m.get("conversationId"),
+                    }
+                )
             url = data.get("@odata.nextLink")
         return results
+
+    def latest_reply_from_me(self, conversation_id: str, after: datetime) -> str | None:
+        """bodyPreview of the most recent Sent Items message in the conversation
+        sent after `after`, or None if there is none. Returns None on any
+        failure — absence of evidence, callers must not treat it as proof of
+        no reply."""
+        try:
+            resp = requests.get(
+                f"{self.graph_endpoint}/me/mailFolders/sentitems/messages",
+                headers=self.get_headers(immutable=True),
+                params={
+                    "$filter": f"conversationId eq '{conversation_id}'",
+                    "$select": "id,sentDateTime,bodyPreview",
+                    "$top": "25",
+                },
+            )
+            resp.raise_for_status()
+            best: tuple[datetime, str] | None = None
+            for m in resp.json().get("value", []):
+                sent = m.get("sentDateTime")
+                if not sent:
+                    continue
+                sent_dt = datetime.fromisoformat(sent.replace("Z", "+00:00"))
+                if sent_dt > after and (best is None or sent_dt > best[0]):
+                    best = (sent_dt, m.get("bodyPreview", ""))
+            return best[1] if best else None
+        except (requests.exceptions.RequestException, ValueError, TypeError):
+            logger.warning("latest_reply_from_me failed for conversation %s", conversation_id)
+            return None
 
     def get_web_link(self, external_id: str) -> str | None:
         """Resolve a message's current webLink via its immutable ID."""

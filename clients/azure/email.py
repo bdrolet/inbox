@@ -24,6 +24,7 @@ class Email:
         self.has_attachments = data.get("hasAttachments", False)
         self.attachments = data.get("attachments", [])
         self.web_link = data.get("webLink")
+        self.categories = data.get("categories", [])
 
         if self.received_datetime:
             try:

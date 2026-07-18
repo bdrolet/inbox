@@ -98,6 +98,13 @@ resource "google_pubsub_topic_iam_member" "process_cf_email_events_publisher" {
   member = "serviceAccount:${google_service_account.process_cf.email}"
 }
 
+# Sweep (runs as process_cf SA) republishes untagged Inbox mail for classification
+resource "google_pubsub_topic_iam_member" "process_cf_messages_publisher" {
+  topic  = google_pubsub_topic.inbox_messages.name
+  role   = "roles/pubsub.publisher"
+  member = "serviceAccount:${google_service_account.process_cf.email}"
+}
+
 # ---------------------------------------------------------------------------
 # Webhook Cloud Function service account
 # ---------------------------------------------------------------------------

@@ -1,10 +1,15 @@
 import re
+from typing import TYPE_CHECKING
 
 import psycopg
-from sentence_transformers import SentenceTransformer
 
 from models.message import Message
 from repo import embeddings
+
+if TYPE_CHECKING:
+    # Heavy torch-backed dep; only needed as a type. Runtime import happens in
+    # clients/bge.py where the model is actually loaded.
+    from sentence_transformers import SentenceTransformer
 
 # "On Mon, Jan 1 2024, Alice <alice@example.com> wrote:"
 _REPLY_CHAIN_RE = re.compile(
@@ -46,7 +51,7 @@ def embed_and_store(
     conn: psycopg.Connection,
     message_id: str,
     text: str,
-    model: SentenceTransformer,
+    model: "SentenceTransformer",
 ) -> list[float]:
     vec = model.encode(text, normalize_embeddings=True).tolist()
     embeddings.store(conn, message_id, vec)

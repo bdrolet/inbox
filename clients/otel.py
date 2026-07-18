@@ -96,7 +96,11 @@ def setup_telemetry(service_name: str) -> None:
         description="Labeled neighbors retrieved for classification",
     )
     sweep_actions = meter.create_counter(
-        "inbox.sweep.actions", description="Sweep actions by outcome (moved/held/skipped/errored)"
+        "inbox.sweep.actions",
+        description=(
+            "Sweep actions by outcome (moved/held/skipped/errored/retriaged_kept/"
+            "retriaged_demoted/retriaged_archived/republished)"
+        ),
     )
     events_published = meter.create_counter(
         "inbox.events.published",

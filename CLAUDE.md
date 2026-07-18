@@ -12,6 +12,8 @@ See `docs/inbox-architecture.md` for the full design and `docs/v1-implementation
 
 **Tasks-service extraction (shipped):** inbox owns classification only — it no longer talks to Asana. For every processed email (all five categories) the dispatch handler publishes one `email_classified` event, and the labeling service publishes `label_applied` feedback events (human confirmations/corrections), both to the inbox-owned `email-events` Pub/Sub topic. The separate `tasks` repo (github.com/bdrolet/tasks) subscribes to that topic and owns all Asana task policy, enrichment (summaries, deadlines), and creation. Urgent ntfy pushes still click through to the source email via the `/r/{uuid}` redirector; the Asana task itself now shows up moments later, created by the tasks service. See `docs/superpowers/plans/2026-07-16-email-events-extraction.md`.
 
+**Inbox grooming (shipped):** the 5 AM sweep also grooms what it can't file. Urgent messages older than 3 days are re-triaged by Claude using the message content and the text of Ben's latest reply in the thread (if any): `still_urgent` re-holds them via a `keep_until:+3d` tag (re-checked every 3 days), `needs_response` demotes them to `respond`/`reply_required`, `resolved_or_expired` archives them. Verdicts are policy, never human feedback — they don't touch `current_label`. Untagged Inbox mail older than 24 h is republished (≤50/night) to the `inbox-messages` topic for normal classification; the processor repairs missing tags on duplicate notifications, so republishing is a safe universal repair. See `docs/superpowers/specs/2026-07-17-inbox-grooming-design.md`.
+
 **Phase 5 remainder:** the old Cloud Run Job is already decommissioned (`docs/v1-implementation.md`); what's left is seeding the vector store with human-confirmed labels — an interactive `scripts/bootstrap_labels.py` session driven by Ben.
 
 ## Development workflow
@@ -30,7 +32,7 @@ This overrides the default "commit or push only when asked" behavior for code ch
 |---|---|
 | **GCP project** | `bens-project-462804`, `us-central1` |
 | **Worker** | Cloud Function `inbox-process` (Pub/Sub event trigger, scale-to-zero) |
-| **Sweep** | Cloud Function `inbox-sweep` (HTTP, Cloud Scheduler `0 5 * * *` America/New_York) — defers folder moves; files Inbox mail by its current category tag |
+| **Sweep** | Cloud Function `inbox-sweep` (HTTP, Cloud Scheduler `0 5 * * *` America/New_York) — files Inbox mail by its current category tag; re-triages stale urgent mail via Claude; republishes untagged mail for classification |
 | **API** | Cloud Run service `inbox-api` (FastAPI) — email search + outbound email + `/r/{uuid}` redirector |
 | **Database** | Cloud SQL Postgres 16 + pgvector, `bens-project-462804:us-central1:inbox`, db `app` |
 | **Email source** | Microsoft Graph API (Outlook/Office 365), MSAL auth |

@@ -10,6 +10,11 @@ import pytest
 # NOTE: these sys.modules stubs persist for the whole pytest session once this
 # file is collected — any later test file wanting the REAL clients.db /
 # repo.classifications / repo.embeddings must install its own via monkeypatch.
+# This also means any module-level attribute that a later-collected test's
+# import chain needs (e.g. handlers.pipeline importing repo.embeddings /
+# repo.classifications names, or monkeypatch.setattr()-ing an attribute onto
+# them) must be present on these stubs, since they persist for the whole
+# session.
 _fake_db = types.ModuleType("clients.db")
 _fake_db.get_conn = lambda: None
 sys.modules.setdefault("clients.db", _fake_db)
@@ -17,11 +22,13 @@ sys.modules.setdefault("clients.db", _fake_db)
 # Stub repo modules to avoid psycopg import
 _fake_repo_classifications = types.ModuleType("repo.classifications")
 _fake_repo_classifications.insert = lambda conn, **kw: None
+_fake_repo_classifications.latest_for_message = lambda conn, mid: None
 sys.modules.setdefault("repo.classifications", _fake_repo_classifications)
 
 _fake_repo_embeddings = types.ModuleType("repo.embeddings")
 _fake_repo_embeddings.set_current_label = lambda conn, mid, label: None
 _fake_repo_embeddings.set_current_importance = lambda conn, mid, importance: None
+_fake_repo_embeddings.retrieve_neighbors = lambda conn, vec, exclude_id=None: []
 sys.modules.setdefault("repo.embeddings", _fake_repo_embeddings)
 
 import handlers.actions.dispatch as dispatch_mod  # noqa: E402

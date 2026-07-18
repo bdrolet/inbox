@@ -14,6 +14,7 @@ from clients.claude import classify
 from clients.db import get_conn
 from clients.graph import get_graph_client
 from handlers.actions.dispatch import dispatch
+from models.types import Category
 from repo import classifications, messages, senders
 from repo.embeddings import retrieve_neighbors
 from services.classification import PROMPT_VERSION, aggregate_neighbors, build_prompt
@@ -23,6 +24,8 @@ from services.ingestion import fetch, normalize
 logger = logging.getLogger(__name__)
 
 _MODEL_NAME = "claude-sonnet-4-6"
+
+_KNOWN_CATEGORY_TAGS = {c.value for c in Category}
 
 
 def run(notification: dict, model, context=None) -> None:
@@ -56,9 +59,13 @@ def run(notification: dict, model, context=None) -> None:
             msg = normalize(email, raw=notification)
 
             with get_conn() as conn:
-                if messages.exists(conn, msg["source"], msg["external_id"]):
-                    logger.debug(f"Duplicate {msg['external_id']} — skipping")
+                existing = messages.get_by_external_id(conn, msg["source"], msg["external_id"])
+                if existing:
+                    logger.debug(f"Duplicate {msg['external_id']} — repairing if untagged")
                     otel.emails_duplicates.add(1)
+                    _repair_tag_if_missing(
+                        conn, graph_client, email, existing["id"], msg["external_id"]
+                    )
                     return
 
                 msg_id = messages.insert(conn, msg)
@@ -178,3 +185,26 @@ def run(notification: dict, model, context=None) -> None:
             root_span.record_exception(e)
             otel.pipeline_errors.add(1, {"stage": "pipeline"})
             raise
+
+
+def _repair_tag_if_missing(conn, graph_client, email, db_message_id, external_id) -> None:
+    """A duplicate notification for a stored message: if the live message is
+    untagged but a classification exists, re-apply its tag. Makes republishing
+    a safe universal repair action. Never overwrites existing tags — a tagged
+    message may carry a human correction."""
+    live_tags = set(getattr(email, "categories", []) or [])
+    if live_tags & _KNOWN_CATEGORY_TAGS:
+        return
+    stored = classifications.latest_for_message(conn, db_message_id)
+    if stored is None:
+        logger.warning(
+            "Duplicate %s exists in DB with no classification — manual attention", external_id
+        )
+        return
+    categories = [stored["category"]]
+    if stored.get("importance"):
+        categories.append(stored["importance"])
+    categories += stored.get("tags") or []
+    categories += [c for c in (getattr(email, "categories", []) or []) if c not in categories]
+    graph_client.tag_message(external_id, categories)
+    logger.info("Repaired missing tag on %s -> %s", external_id, categories)
