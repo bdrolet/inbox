@@ -96,6 +96,9 @@ def retriage_verdict(system_prompt: str, user_message: str) -> dict:
     otel.claude_tokens.add(usage.input_tokens, {"token_type": "input"})
     otel.claude_tokens.add(usage.output_tokens, {"token_type": "output"})
     text = response.content[0].text.strip()  # type: ignore[union-attr]
+    if text.startswith("```"):
+        # Sonnet wraps the JSON in a markdown fence despite "JSON only"
+        text = text.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
     try:
         data = json.loads(text)
     except json.JSONDecodeError as e:
