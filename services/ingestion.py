@@ -45,4 +45,5 @@ def normalize(email: Email, raw: dict | None = None) -> Message:
         thread_id=None,
         raw=raw or {},
         web_link=getattr(email, "web_link", None),
+        has_attachments=bool(getattr(email, "has_attachments", False)),
     )

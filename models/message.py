@@ -17,3 +17,4 @@ class Message(TypedDict):
     thread_id: Optional[str]
     raw: dict  # original provider payload
     web_link: Optional[str]  # Outlook web URL (from Graph webLink property)
+    has_attachments: bool  # Graph hasAttachments — schedule uses it to decide whether to fetch .ics
