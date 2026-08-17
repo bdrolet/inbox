@@ -89,27 +89,6 @@ variable "hubspot_token" {
   default     = ""
 }
 
-variable "google_calendar_client_id" {
-  description = "Google OAuth2 client ID for Calendar API"
-  type        = string
-  sensitive   = true
-  default     = ""
-}
-
-variable "google_calendar_client_secret" {
-  description = "Google OAuth2 client secret for Calendar API"
-  type        = string
-  sensitive   = true
-  default     = ""
-}
-
-variable "google_calendar_refresh_token" {
-  description = "Google OAuth2 refresh token for Calendar API"
-  type        = string
-  sensitive   = true
-  default     = ""
-}
-
 variable "search_token" {
   description = "Bearer token callers must include to authenticate search requests. Generate with: openssl rand -hex 32"
   type        = string

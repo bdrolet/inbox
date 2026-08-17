@@ -1,18 +1,15 @@
 locals {
   secrets = {
-    "client-id"                     = var.client_id
-    "client-secret"                 = var.client_secret
-    "tenant-id"                     = var.tenant_id
-    "anthropic-api-key"             = var.anthropic_api_key
-    "msal-token-cache"              = var.msal_token_cache
-    "inbox-db-password"             = var.db_password
-    "hubspot-token"                 = var.hubspot_token
-    "google-calendar-client-id"     = var.google_calendar_client_id
-    "google-calendar-client-secret" = var.google_calendar_client_secret
-    "google-calendar-refresh-token" = var.google_calendar_refresh_token
-    "hf-token"                      = var.hf_token
-    "search-token"                  = var.search_token
-    "graph-subscription-id"         = var.graph_subscription_id
+    "client-id"             = var.client_id
+    "client-secret"         = var.client_secret
+    "tenant-id"             = var.tenant_id
+    "anthropic-api-key"     = var.anthropic_api_key
+    "msal-token-cache"      = var.msal_token_cache
+    "inbox-db-password"     = var.db_password
+    "hubspot-token"         = var.hubspot_token
+    "hf-token"              = var.hf_token
+    "search-token"          = var.search_token
+    "graph-subscription-id" = var.graph_subscription_id
   }
 
   # Secrets whose live value is updated at runtime (by the renew/process CFs) and

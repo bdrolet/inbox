@@ -12,6 +12,8 @@ See `docs/inbox-architecture.md` for the full design and `docs/v1-implementation
 
 **Tasks-service extraction (shipped):** inbox owns classification only — it no longer talks to Asana. For every processed email (all five categories) the dispatch handler publishes one `email_classified` event, and the labeling service publishes `label_applied` feedback events (human confirmations/corrections), both to the inbox-owned `email-events` Pub/Sub topic. The separate `tasks` repo (github.com/bdrolet/tasks) subscribes to that topic and owns all Asana task policy, enrichment (summaries, deadlines), and creation. Urgent ntfy pushes still click through to the source email via the `/r/{uuid}` redirector; the Asana task itself now shows up moments later, created by the tasks service. See `docs/superpowers/plans/2026-07-16-email-events-extraction.md`.
 
+**Calendar-service extraction (shipped):** inbox owns zero Google Calendar code. The separate `schedule` repo (github.com/bdrolet/schedule, Cloud Function `schedule-process`) subscribes to the same `email-events` topic and creates the Google Calendar event at classification time; the three `google-calendar-*` secrets moved with it and are owned by schedule's terraform state. Inbox still detects ICS invites (`services/calendar_invite.py`, `repo/calendar_invites.py`) and emits an "Open in Google Calendar" template link — a plain URL, no API — in the `email_classified` invite extras. The RSVP callback (`/calendar?id=…&action=accept|decline|maybe`) sends the Graph response to the organizer and records `user_response`; it no longer inserts anything into Google Calendar. See `docs/superpowers/plans/2026-08-17-remove-google-calendar.md`.
+
 **Inbox grooming (shipped):** the 5 AM sweep also grooms what it can't file. Urgent messages older than 3 days are re-triaged by Claude using the message content and the text of Ben's latest reply in the thread (if any): `still_urgent` re-holds them via a `keep_until:+3d` tag (re-checked every 3 days), `needs_response` demotes them to `respond`/`reply_required`, `resolved_or_expired` archives them. Verdicts are policy, never human feedback — they don't touch `current_label`. Untagged Inbox mail older than 24 h is republished (≤50/night) to the `inbox-messages` topic for normal classification; the processor repairs missing tags on duplicate notifications, so republishing is a safe universal repair. See `docs/superpowers/specs/2026-07-17-inbox-grooming-design.md`.
 
 **Phase 5 remainder:** the old Cloud Run Job is already decommissioned (`docs/v1-implementation.md`); what's left is seeding the vector store with human-confirmed labels — an interactive `scripts/bootstrap_labels.py` session driven by Ben.
@@ -38,7 +40,7 @@ This overrides the default "commit or push only when asked" behavior for code ch
 | **Email source** | Microsoft Graph API (Outlook/Office 365), MSAL auth |
 | **LLM** | Claude Sonnet via Anthropic API |
 | **Trigger** | Graph change notifications → webhook CF → Pub/Sub → processor CF |
-| **Domain events** | Pub/Sub topic `email-events` (inbox-owned) — `email_classified` + `label_applied` events; consumed by the separate `tasks` repo (github.com/bdrolet/tasks), which owns Asana |
+| **Domain events** | Pub/Sub topic `email-events` (inbox-owned) — `email_classified` + `label_applied` events; consumed by the separate `tasks` repo (github.com/bdrolet/tasks), which owns Asana, and the `schedule` repo (github.com/bdrolet/schedule), which owns Google Calendar |
 | **Notifications** | Self-hosted ntfy at `ntfy.drolet.ai`, topic `inbox` |
 | **GCP infra** | `terraform/` (Cloud Functions, Pub/Sub, Cloud SQL, Scheduler, Secrets, IAM) |
 
@@ -151,7 +153,6 @@ CLOUD_SQL_CONNECTION_NAME=bens-project-462804:us-central1:inbox \
 | `grafana-otlp-endpoint`, `grafana-otlp-token` | Processor + webhook CFs — OTel metrics/traces export to Grafana Cloud. **Owned by the platform state (`~/src/infra`)**; read here via data source |
 | `asana-api-key` | **Owned by the platform state (`~/src/infra`)** for the tasks repo (github.com/bdrolet/tasks) — inbox no longer references it |
 | `hubspot-token` | Processor CF — HubSpot contact upsert + email logging |
-| `google-calendar-client-id`, `google-calendar-client-secret`, `google-calendar-refresh-token` | Processor CF — Google Calendar responses |
 | `hf-token` | Processor CF — Hugging Face auth for bge model download |
 | `search-token` | `inbox-api` — authenticates API requests |
 | `graph-subscription-id` | Renew CF — subscription to renew/self-heal |
