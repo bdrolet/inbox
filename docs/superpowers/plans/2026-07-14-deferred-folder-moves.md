@@ -354,6 +354,7 @@ sweep files the message to Archive based on its category tag."""
 Edit `handlers/actions/dispatch.py`:
 ```python
 from handlers.actions import respond, review, urgent
+
 ...
 _HANDLERS = {
     Category.URGENT: urgent.handle,
@@ -448,47 +449,46 @@ In `clients/azure/graph_email_client.py`, replace `get_headers`:
 
 Add helper methods (place near `move_message_to_action_folder`):
 ```python
-    def list_inbox_categories(self) -> list[dict]:
-        """Return [{'id', 'categories'}] for all Inbox messages (immutable IDs)."""
-        results: list[dict] = []
-        url = (
-            f"{self.graph_endpoint}/me/mailFolders/inbox/messages"
-            "?$select=id,categories&$top=100"
-        )
-        while url:
-            resp = requests.get(url, headers=self.get_headers(immutable=True))
-            resp.raise_for_status()
-            data = resp.json()
-            for m in data.get("value", []):
-                results.append({"id": m["id"], "categories": m.get("categories", [])})
-            url = data.get("@odata.nextLink")
-        return results
+def list_inbox_categories(self) -> list[dict]:
+    """Return [{'id', 'categories'}] for all Inbox messages (immutable IDs)."""
+    results: list[dict] = []
+    url = f"{self.graph_endpoint}/me/mailFolders/inbox/messages?$select=id,categories&$top=100"
+    while url:
+        resp = requests.get(url, headers=self.get_headers(immutable=True))
+        resp.raise_for_status()
+        data = resp.json()
+        for m in data.get("value", []):
+            results.append({"id": m["id"], "categories": m.get("categories", [])})
+        url = data.get("@odata.nextLink")
+    return results
 
-    def get_web_link(self, external_id: str) -> str | None:
-        """Resolve a message's current webLink via its immutable ID."""
-        resp = requests.get(
+
+def get_web_link(self, external_id: str) -> str | None:
+    """Resolve a message's current webLink via its immutable ID."""
+    resp = requests.get(
+        f"{self.graph_endpoint}/me/messages/{external_id}",
+        headers=self.get_headers(immutable=True),
+        params={"$select": "webLink"},
+    )
+    if resp.status_code == 404:
+        return None
+    resp.raise_for_status()
+    return resp.json().get("webLink")
+
+
+def set_categories(self, external_id: str, categories: list[str]) -> bool:
+    """Overwrite a message's Outlook categories (immutable ID)."""
+    try:
+        resp = requests.patch(
             f"{self.graph_endpoint}/me/messages/{external_id}",
             headers=self.get_headers(immutable=True),
-            params={"$select": "webLink"},
+            json={"categories": categories},
         )
-        if resp.status_code == 404:
-            return None
         resp.raise_for_status()
-        return resp.json().get("webLink")
-
-    def set_categories(self, external_id: str, categories: list[str]) -> bool:
-        """Overwrite a message's Outlook categories (immutable ID)."""
-        try:
-            resp = requests.patch(
-                f"{self.graph_endpoint}/me/messages/{external_id}",
-                headers=self.get_headers(immutable=True),
-                json={"categories": categories},
-            )
-            resp.raise_for_status()
-            return True
-        except requests.exceptions.RequestException as e:
-            logger.error("set_categories failed for %s: %s", external_id, e)
-            return False
+        return True
+    except requests.exceptions.RequestException as e:
+        logger.error("set_categories failed for %s: %s", external_id, e)
+        return False
 ```
 
 Also add the immutable header to the existing message read/move calls so IDs round-trip: in `move_message_to_action_folder` change `headers=self.get_headers()` to `headers=self.get_headers(immutable=True)` (both the `get_or_create_mail_folder` call it makes internally may stay default — folders don't support immutable IDs — but the move POST uses immutable). In `fetch`-path message GET (the `$select=...webLink` fetch used by `services/ingestion`) pass `immutable=True` as well so the stored `external_id` is immutable.
@@ -497,11 +497,11 @@ Also add the immutable header to the existing message read/move calls so IDs rou
 
 In `clients/graph_subscriptions.py`, `register`, change:
 ```python
-        headers=client.get_headers(),
+headers = (client.get_headers(),)
 ```
 to:
 ```python
-        headers=client.get_headers(immutable=True),
+headers = (client.get_headers(immutable=True),)
 ```
 
 - [ ] **Step 5: Run test to verify it passes + lint**
@@ -555,9 +555,7 @@ def client(monkeypatch):
     monkeypatch.setitem(sys.modules, "clients.graph", fake_graph)
 
     fake_repo = types.ModuleType("repo.messages")
-    fake_repo.get = lambda conn, mid: (
-        {"external_id": "IMMUT-1"} if mid == "known" else None
-    )
+    fake_repo.get = lambda conn, mid: {"external_id": "IMMUT-1"} if mid == "known" else None
     monkeypatch.setitem(sys.modules, "repo.messages", fake_repo)
 
     import importlib
@@ -940,7 +938,9 @@ These steps are operational, not TDD. Run them in order; the ⛔ steps require B
   ```python
   from clients.azure import GraphEmailClient
   from clients.graph_subscriptions import register, delete
-  c = GraphEmailClient(); c.authenticate_interactive()
+
+  c = GraphEmailClient()
+  c.authenticate_interactive()
   delete(c, "f58b30e4-4090-433a-87cc-fbe1f87f574a")  # current sub
   print(register(c, "https://inbox-webhook-aizbgjlava-uc.a.run.app")["id"])
   ```

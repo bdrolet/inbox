@@ -162,7 +162,9 @@ def test_get_attachments_shared_hits_users_path(monkeypatch):
 
     monkeypatch.setattr(requests, "get", fake_get)
     atts = _client().get_attachments("m1", mailbox="team@x.com")
-    assert seen["url"] == "https://graph.microsoft.com/v1.0/users/team@x.com/messages/m1/attachments"
+    assert (
+        seen["url"] == "https://graph.microsoft.com/v1.0/users/team@x.com/messages/m1/attachments"
+    )
     assert atts == [{"id": "a1"}]
 
 
@@ -406,7 +408,9 @@ def test_get_group_post_attachments(monkeypatch):
 
     monkeypatch.setattr(requests, "get", fake_get)
     atts = _client().get_group_post_attachments("g1", "t1", "p1")
-    assert seen["url"] == "https://graph.microsoft.com/v1.0/groups/g1/threads/t1/posts/p1/attachments"
+    assert (
+        seen["url"] == "https://graph.microsoft.com/v1.0/groups/g1/threads/t1/posts/p1/attachments"
+    )
     assert atts == [{"id": "a1", "name": "f.pdf"}]
 
 
@@ -426,66 +430,67 @@ Expected: FAIL — `AttributeError: ... has no attribute 'get_group_conversation
 In `clients/azure/graph_email_client.py`, add directly after `search_group_conversations` (after ~line 912):
 
 ```python
-    def get_group_conversation(self, group_id: str, conversation_id: str) -> Optional[dict]:
-        """Fetch an M365 group conversation with all its posts.
+def get_group_conversation(self, group_id: str, conversation_id: str) -> Optional[dict]:
+    """Fetch an M365 group conversation with all its posts.
 
-        Returns:
-            {"topic": str, "lastDeliveredDateTime": str | None, "posts": [dict]}
-            where each post is the raw Graph post dict annotated with its
-            "threadId". None if the conversation does not exist (Graph 404).
+    Returns:
+        {"topic": str, "lastDeliveredDateTime": str | None, "posts": [dict]}
+        where each post is the raw Graph post dict annotated with its
+        "threadId". None if the conversation does not exist (Graph 404).
 
-        Raises:
-            requests.HTTPError: any Graph error other than 404.
-        """
-        conv_url = f"{self.graph_endpoint}/groups/{group_id}/conversations/{conversation_id}"
-        response = requests.get(
-            conv_url,
+    Raises:
+        requests.HTTPError: any Graph error other than 404.
+    """
+    conv_url = f"{self.graph_endpoint}/groups/{group_id}/conversations/{conversation_id}"
+    response = requests.get(
+        conv_url,
+        headers=self.get_headers(),
+        params={"$select": "id,topic,lastDeliveredDateTime"},
+    )
+    if response.status_code == 404:
+        return None
+    response.raise_for_status()
+    convo = response.json()
+
+    threads_resp = requests.get(
+        f"{conv_url}/threads", headers=self.get_headers(), params={"$select": "id"}
+    )
+    threads_resp.raise_for_status()
+
+    posts: list[dict] = []
+    for thread in threads_resp.json().get("value", []):
+        posts_resp = requests.get(
+            f"{self.graph_endpoint}/groups/{group_id}/threads/{thread['id']}/posts",
             headers=self.get_headers(),
-            params={"$select": "id,topic,lastDeliveredDateTime"},
+            params={"$select": "id,body,from,sender,receivedDateTime,hasAttachments"},
         )
-        if response.status_code == 404:
-            return None
-        response.raise_for_status()
-        convo = response.json()
+        posts_resp.raise_for_status()
+        for post in posts_resp.json().get("value", []):
+            post["threadId"] = thread["id"]
+            posts.append(post)
 
-        threads_resp = requests.get(
-            f"{conv_url}/threads", headers=self.get_headers(), params={"$select": "id"}
-        )
-        threads_resp.raise_for_status()
+    return {
+        "topic": convo.get("topic", ""),
+        "lastDeliveredDateTime": convo.get("lastDeliveredDateTime"),
+        "posts": posts,
+    }
 
-        posts: list[dict] = []
-        for thread in threads_resp.json().get("value", []):
-            posts_resp = requests.get(
-                f"{self.graph_endpoint}/groups/{group_id}/threads/{thread['id']}/posts",
-                headers=self.get_headers(),
-                params={"$select": "id,body,from,sender,receivedDateTime,hasAttachments"},
-            )
-            posts_resp.raise_for_status()
-            for post in posts_resp.json().get("value", []):
-                post["threadId"] = thread["id"]
-                posts.append(post)
 
-        return {
-            "topic": convo.get("topic", ""),
-            "lastDeliveredDateTime": convo.get("lastDeliveredDateTime"),
-            "posts": posts,
-        }
+def get_group_post_attachments(self, group_id: str, thread_id: str, post_id: str) -> list[dict]:
+    """GET /groups/{gid}/threads/{tid}/posts/{pid}/attachments — raw dicts.
 
-    def get_group_post_attachments(self, group_id: str, thread_id: str, post_id: str) -> list[dict]:
-        """GET /groups/{gid}/threads/{tid}/posts/{pid}/attachments — raw dicts.
-
-        Raises:
-            LookupError: the post does not exist (Graph 404).
-            requests.HTTPError: any other Graph error.
-        """
-        response = requests.get(
-            f"{self.graph_endpoint}/groups/{group_id}/threads/{thread_id}/posts/{post_id}/attachments",
-            headers=self.get_headers(),
-        )
-        if response.status_code == 404:
-            raise LookupError("post not found")
-        response.raise_for_status()
-        return response.json().get("value", [])
+    Raises:
+        LookupError: the post does not exist (Graph 404).
+        requests.HTTPError: any other Graph error.
+    """
+    response = requests.get(
+        f"{self.graph_endpoint}/groups/{group_id}/threads/{thread_id}/posts/{post_id}/attachments",
+        headers=self.get_headers(),
+    )
+    if response.status_code == 404:
+        raise LookupError("post not found")
+    response.raise_for_status()
+    return response.json().get("value", [])
 ```
 
 - [ ] **Step 4: Run tests to verify they pass**
@@ -528,9 +533,9 @@ from services.fetching import FetchedEmail, fetch_attachments, fetch_email
 class FakeClient:
     def __init__(self):
         self.groups = [{"id": "g1", "display_name": "Eng", "mail": "eng@x.com"}]
-        self.emails = {}          # (message_id, mailbox) -> Email-constructor dict
-        self.attachments = {}     # (message_id, mailbox) -> list[dict]
-        self.conversations = {}   # (group_id, conversation_id) -> convo dict
+        self.emails = {}  # (message_id, mailbox) -> Email-constructor dict
+        self.attachments = {}  # (message_id, mailbox) -> list[dict]
+        self.conversations = {}  # (group_id, conversation_id) -> convo dict
         self.post_attachments = {}  # (group_id, thread_id, post_id) -> list[dict]
 
     def get_member_groups(self):
@@ -593,11 +598,14 @@ def test_fetch_email_group_by_mail_case_insensitive(client):
     client.conversations[("g1", "c1")] = {
         "topic": "Lunch",
         "lastDeliveredDateTime": "2026-07-01T12:00:00Z",
-        "posts": [_post("p1", "2026-07-01T10:00:00Z"), _post("p2", "2026-07-01T12:00:00Z", body="latest")],
+        "posts": [
+            _post("p1", "2026-07-01T10:00:00Z"),
+            _post("p2", "2026-07-01T12:00:00Z", body="latest"),
+        ],
     }
     fetched = fetch_email("c1", mailbox="group:ENG@x.com")
     assert fetched.email.subject == "Lunch"
-    assert fetched.email.body_content == "latest"          # mirrors latest post
+    assert fetched.email.body_content == "latest"  # mirrors latest post
     assert [p["id"] for p in fetched.posts] == ["p1", "p2"]  # oldest first
     assert fetched.email.web_link is None
 
@@ -625,7 +633,10 @@ def test_fetch_attachments_group_aggregates_with_post_id(client):
     client.conversations[("g1", "c1")] = {
         "topic": "T",
         "lastDeliveredDateTime": None,
-        "posts": [_post("p1", "2026-07-01T10:00:00Z", has_attachments=True), _post("p2", "2026-07-01T11:00:00Z")],
+        "posts": [
+            _post("p1", "2026-07-01T10:00:00Z", has_attachments=True),
+            _post("p2", "2026-07-01T11:00:00Z"),
+        ],
     }
     client.post_attachments[("g1", "t1", "p1")] = [{"id": "a1", "name": "f.pdf"}]
     atts = fetch_attachments("c1", mailbox="group:eng@x.com")
@@ -652,6 +663,7 @@ returns ("me", a shared-mailbox address, or "group:{mail-or-id}"), resolves
 group labels to a group ID via the user's memberships, and normalizes group
 conversations into the same Email shape as single messages.
 """
+
 import logging
 from dataclasses import dataclass
 
@@ -701,7 +713,7 @@ def fetch_email(message_id: str, mailbox: str = "me") -> FetchedEmail | None:
     """Fetch one message (primary/shared mailbox) or group conversation."""
     client = get_graph_client()
     if mailbox.startswith(_GROUP_PREFIX):
-        group_id = _resolve_group_id(client, mailbox[len(_GROUP_PREFIX):])
+        group_id = _resolve_group_id(client, mailbox[len(_GROUP_PREFIX) :])
         convo = client.get_group_conversation(group_id, message_id)
         if convo is None:
             return None
@@ -719,7 +731,7 @@ def fetch_attachments(message_id: str, mailbox: str = "me") -> list[dict]:
     if not mailbox.startswith(_GROUP_PREFIX):
         return client.get_attachments(message_id, mailbox=mailbox)
 
-    group_id = _resolve_group_id(client, mailbox[len(_GROUP_PREFIX):])
+    group_id = _resolve_group_id(client, mailbox[len(_GROUP_PREFIX) :])
     convo = client.get_group_conversation(group_id, message_id)
     if convo is None:
         raise LookupError("message not found")
@@ -812,9 +824,7 @@ def _group() -> fetching.FetchedEmail:
             "hasAttachments": False,
         }
     ]
-    return fetching.FetchedEmail(
-        email=Email({"id": "c1", "subject": "Lunch"}), posts=posts
-    )
+    return fetching.FetchedEmail(email=Email({"id": "c1", "subject": "Lunch"}), posts=posts)
 
 
 def test_get_email_defaults_to_me(monkeypatch):

@@ -104,6 +104,7 @@ from services.ingestion import fetch, normalize
 
 _graph_client = None  # module-level singleton; reused on warm invocations
 
+
 def _get_graph_client():
     global _graph_client
     if _graph_client is None:
@@ -111,6 +112,7 @@ def _get_graph_client():
         client.authenticate_headless()
         _graph_client = client
     return _graph_client
+
 
 @functions_framework.cloud_event
 def process(cloud_event):
@@ -164,7 +166,9 @@ After `terraform apply`, run once:
 ```python
 from clients.azure import GraphEmailClient
 from clients.graph_subscriptions import register
-c = GraphEmailClient(); c.authenticate_headless()
+
+c = GraphEmailClient()
+c.authenticate_headless()
 result = register(c, "https://inbox-webhook-aizbgjlava-uc.a.run.app")
 print(result["id"])  # set as graph_subscription_id in terraform.tfvars
 ```
@@ -324,11 +328,11 @@ Every new message gets an embedding stored in `message_embeddings`. Retrieval ru
 
 ```python
 class Category(str, Enum):
-    URGENT = "urgent"      # needs attention today; triggers push notification
-    RESPOND = "respond"    # needs a reply, not today; moved to "To Respond"
-    REVIEW = "review"      # worth reading, no reply needed; moved to "To Review"
-    REFERENCE = "reference" # keep but don't read now; archived
-    IGNORE = "ignore"      # marketing/noise; archived
+    URGENT = "urgent"  # needs attention today; triggers push notification
+    RESPOND = "respond"  # needs a reply, not today; moved to "To Respond"
+    REVIEW = "review"  # worth reading, no reply needed; moved to "To Review"
+    REFERENCE = "reference"  # keep but don't read now; archived
+    IGNORE = "ignore"  # marketing/noise; archived
 ```
 
 ### `clients/claude.py` — expected response schema
@@ -365,11 +369,13 @@ from handlers.pipeline import run as run_pipeline
 
 _model = None  # lazy — same pattern as Phase 2
 
+
 def _get_model():
     global _model
     if _model is None:
         _model = load_model()
     return _model
+
 
 @functions_framework.cloud_event
 def process(cloud_event):
@@ -434,9 +440,24 @@ httpx.post(
         "title": f"[{importance.upper()}] {subject}",
         "message": f"From: {sender}\n\n{reasoning}",
         "actions": [
-            {"action": "http", "label": "Confirm", "url": f"{webhook_url}/label?id={message_id}&label=urgent&source=human_confirmation", "headers": {"Authorization": f"Bearer {WEBHOOK_LABEL_TOKEN}"}},
-            {"action": "http", "label": "Respond", "url": f"{webhook_url}/label?id={message_id}&label=respond&source=human_correction", "headers": {"Authorization": f"Bearer {WEBHOOK_LABEL_TOKEN}"}},
-            {"action": "http", "label": "Review",  "url": f"{webhook_url}/label?id={message_id}&label=review&source=human_correction",  "headers": {"Authorization": f"Bearer {WEBHOOK_LABEL_TOKEN}"}},
+            {
+                "action": "http",
+                "label": "Confirm",
+                "url": f"{webhook_url}/label?id={message_id}&label=urgent&source=human_confirmation",
+                "headers": {"Authorization": f"Bearer {WEBHOOK_LABEL_TOKEN}"},
+            },
+            {
+                "action": "http",
+                "label": "Respond",
+                "url": f"{webhook_url}/label?id={message_id}&label=respond&source=human_correction",
+                "headers": {"Authorization": f"Bearer {WEBHOOK_LABEL_TOKEN}"},
+            },
+            {
+                "action": "http",
+                "label": "Review",
+                "url": f"{webhook_url}/label?id={message_id}&label=review&source=human_correction",
+                "headers": {"Authorization": f"Bearer {WEBHOOK_LABEL_TOKEN}"},
+            },
         ],
     },
 )

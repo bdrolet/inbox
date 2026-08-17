@@ -70,7 +70,12 @@ def test_list_inbox_categories_includes_received_and_conversation(monkeypatch):
         "receivedDateTime": "2026-07-10T12:00:00Z",
         "conversationId": "conv1",
     }
-    assert rows[1] == {"id": "m2", "categories": [], "receivedDateTime": None, "conversationId": None}
+    assert rows[1] == {
+        "id": "m2",
+        "categories": [],
+        "receivedDateTime": None,
+        "conversationId": None,
+    }
 ```
 
 - [ ] **Step 3: Run test to verify it fails**
@@ -148,10 +153,16 @@ def test_latest_reply_from_me_returns_newest_preview(monkeypatch):
         return _Resp(
             json_data={
                 "value": [
-                    {"id": "s1", "sentDateTime": "2026-07-11T09:00:00Z",
-                     "bodyPreview": "older reply"},
-                    {"id": "s2", "sentDateTime": "2026-07-12T09:00:00Z",
-                     "bodyPreview": "on it, will finish Friday"},
+                    {
+                        "id": "s1",
+                        "sentDateTime": "2026-07-11T09:00:00Z",
+                        "bodyPreview": "older reply",
+                    },
+                    {
+                        "id": "s2",
+                        "sentDateTime": "2026-07-12T09:00:00Z",
+                        "bodyPreview": "on it, will finish Friday",
+                    },
                 ]
             }
         )
@@ -165,8 +176,13 @@ def test_latest_reply_from_me_none_when_only_older_replies(monkeypatch):
     def fake_get(url, headers=None, params=None):
         return _Resp(
             json_data={
-                "value": [{"id": "s1", "sentDateTime": "2026-07-09T09:00:00Z",
-                           "bodyPreview": "before it arrived"}]
+                "value": [
+                    {
+                        "id": "s1",
+                        "sentDateTime": "2026-07-09T09:00:00Z",
+                        "bodyPreview": "before it arrived",
+                    }
+                ]
             }
         )
 
@@ -287,9 +303,7 @@ def test_decide_urgent_without_received_at_skips():
 
 
 def test_decide_keep_until_defers_retriage():
-    d = decide(
-        ["urgent", "keep_until:2026-07-20"], _now(2026, 7, 14), _received(2026, 7, 1)
-    )
+    d = decide(["urgent", "keep_until:2026-07-20"], _now(2026, 7, 14), _received(2026, 7, 1))
     assert d.action == "hold"
 
 
@@ -428,9 +442,7 @@ def test_apply_verdict_still_urgent_adds_hold():
 
 
 def test_apply_verdict_still_urgent_replaces_old_hold():
-    out = apply_verdict(
-        "still_urgent", ["urgent", "keep_until:2026-07-10"], _now(2026, 7, 14)
-    )
+    out = apply_verdict("still_urgent", ["urgent", "keep_until:2026-07-10"], _now(2026, 7, 14))
     assert out.new_categories == ["urgent", "keep_until:2026-07-17"]
 
 
@@ -634,9 +646,7 @@ def test_evaluate_fail_safe_on_fetch_failure(monkeypatch):
 
 
 def test_evaluate_handles_missing_conversation(monkeypatch):
-    monkeypatch.setattr(
-        retriage, "retriage_verdict", lambda s, u: {"verdict": "needs_response"}
-    )
+    monkeypatch.setattr(retriage, "retriage_verdict", lambda s, u: {"verdict": "needs_response"})
     assert retriage.evaluate(FakeClient(), "m1", None, RECEIVED, NOW) == "needs_response"
 ```
 
@@ -721,9 +731,7 @@ def evaluate(
         )
         data = retriage_verdict(SYSTEM_PROMPT, user_message)
         verdict = data.get("verdict", "")
-        logger.info(
-            "retriage %s -> %s (%s)", message_id, verdict, data.get("reason", "")
-        )
+        logger.info("retriage %s -> %s (%s)", message_id, verdict, data.get("reason", ""))
         if verdict not in VERDICTS:
             return "still_urgent"
         return verdict
@@ -790,16 +798,27 @@ def test_run_sweep_retriage_verdict_paths():
     stale = "2026-07-01T12:00:00Z"
     client = FakeClient(
         [
-            {"id": "keep", "categories": ["urgent"], "receivedDateTime": stale,
-             "conversationId": "c1"},
-            {"id": "demote", "categories": ["urgent", "P0"], "receivedDateTime": stale,
-             "conversationId": "c2"},
-            {"id": "done", "categories": ["urgent"], "receivedDateTime": stale,
-             "conversationId": "c3"},
+            {
+                "id": "keep",
+                "categories": ["urgent"],
+                "receivedDateTime": stale,
+                "conversationId": "c1",
+            },
+            {
+                "id": "demote",
+                "categories": ["urgent", "P0"],
+                "receivedDateTime": stale,
+                "conversationId": "c2",
+            },
+            {
+                "id": "done",
+                "categories": ["urgent"],
+                "receivedDateTime": stale,
+                "conversationId": "c3",
+            },
         ]
     )
-    verdicts = {"keep": "still_urgent", "demote": "needs_response",
-                "done": "resolved_or_expired"}
+    verdicts = {"keep": "still_urgent", "demote": "needs_response", "done": "resolved_or_expired"}
 
     def evaluate(c, message_id, conversation_id, received_at, now_):
         return verdicts[message_id]
@@ -1079,9 +1098,7 @@ In `clients/azure/email.py::Email.__init__`, add alongside the other fields:
 `repo/messages.py`:
 
 ```python
-def get_by_external_id(
-    conn: psycopg.Connection, source: str, external_id: str
-) -> Optional[dict]:
+def get_by_external_id(conn: psycopg.Connection, source: str, external_id: str) -> Optional[dict]:
     return conn.execute(
         "SELECT * FROM messages WHERE source = %s AND external_id = %s",
         (source, external_id),
@@ -1156,9 +1173,7 @@ def test_repair_skips_already_tagged_message(monkeypatch):
 def test_repair_skips_when_no_stored_classification(monkeypatch):
     import handlers.pipeline as pipeline
 
-    monkeypatch.setattr(
-        pipeline.classifications, "latest_for_message", lambda conn, mid: None
-    )
+    monkeypatch.setattr(pipeline.classifications, "latest_for_message", lambda conn, mid: None)
     graph = FakeGraph()
     _repair_tag_if_missing(None, graph, FakeEmail(categories=[]), "db-1", "ext-1")
     assert graph.tagged == []
@@ -1220,16 +1235,12 @@ def _repair_tag_if_missing(conn, graph_client, email, db_message_id, external_id
 Replace the duplicate branch in `run` (currently `pipeline.py:59-62`):
 
 ```python
-                existing = messages.get_by_external_id(
-                    conn, msg["source"], msg["external_id"]
-                )
-                if existing:
-                    logger.debug(f"Duplicate {msg['external_id']} — repairing if untagged")
-                    otel.emails_duplicates.add(1)
-                    _repair_tag_if_missing(
-                        conn, graph_client, email, existing["id"], msg["external_id"]
-                    )
-                    return
+existing = messages.get_by_external_id(conn, msg["source"], msg["external_id"])
+if existing:
+    logger.debug(f"Duplicate {msg['external_id']} — repairing if untagged")
+    otel.emails_duplicates.add(1)
+    _repair_tag_if_missing(conn, graph_client, email, existing["id"], msg["external_id"])
+    return
 ```
 
 (`messages.exists` keeps its other callers, if any — do not delete it.)

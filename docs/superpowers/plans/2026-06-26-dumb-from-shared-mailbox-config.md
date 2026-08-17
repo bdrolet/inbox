@@ -127,6 +127,7 @@ Root-level leaf module: imports nothing from the project so every layer can
 depend on it without creating cycles. Values are read once per process via
 get_config() (see the @lru_cache note in the implementation plan).
 """
+
 import os
 from dataclasses import dataclass
 from functools import lru_cache
@@ -141,9 +142,7 @@ class Config:
     def from_env() -> "Config":
         raw = os.environ.get("SHARED_MAILBOXES", "")
         return Config(
-            shared_mailboxes=frozenset(
-                m.strip().lower() for m in raw.split(",") if m.strip()
-            ),
+            shared_mailboxes=frozenset(m.strip().lower() for m in raw.split(",") if m.strip()),
             search_token=os.environ.get("SEARCH_TOKEN") or None,
         )
 
@@ -246,23 +245,32 @@ Owns the shared-mailbox policy — callers pass only a from-address, and this
 service decides shared-vs-not from config before delegating to the Graph
 client (which handles the mechanical path routing).
 """
+
 from clients.graph import get_graph_client
 from config import get_config
 
 
 def create_draft(*, to, subject, body, cc=None, bcc=None, body_type="Text", from_address=None):
     return get_graph_client().create_draft(
-        to=to, subject=subject, body=body, cc=cc or [], bcc=bcc or [],
+        to=to,
+        subject=subject,
+        body=body,
+        cc=cc or [],
+        bcc=bcc or [],
         body_type=body_type,
         from_address=from_address,
         from_shared=get_config().is_shared(from_address),
     )
 
 
-def add_attachment(message_id, name, content_bytes_b64, content_type=None, *,
-                   from_address=None, is_inline=False):
+def add_attachment(
+    message_id, name, content_bytes_b64, content_type=None, *, from_address=None, is_inline=False
+):
     return get_graph_client().add_attachment(
-        message_id, name, content_bytes_b64, content_type,
+        message_id,
+        name,
+        content_bytes_b64,
+        content_type,
         from_address=from_address,
         from_shared=get_config().is_shared(from_address),
         is_inline=is_inline,
@@ -279,7 +287,11 @@ def send_draft(message_id, *, from_address=None):
 
 def send_message(*, to, subject, body, cc=None, bcc=None, body_type="Text", from_address=None):
     get_graph_client().send_message(
-        to=to, subject=subject, body=body, cc=cc or [], bcc=bcc or [],
+        to=to,
+        subject=subject,
+        body=body,
+        cc=cc or [],
+        bcc=bcc or [],
         body_type=body_type,
         from_address=from_address,
         from_shared=get_config().is_shared(from_address),
@@ -319,8 +331,12 @@ def send_message(*, to, subject, body, cc=None, bcc=None, body_type="Text", from
   def create_draft(req: CreateDraftRequest, _: None = Depends(_verify_token)) -> DraftResponse:
       created = _call_graph(
           sending.create_draft,
-          to=req.to, subject=req.subject, body=req.body,
-          cc=req.cc, bcc=req.bcc, body_type=req.body_type,
+          to=req.to,
+          subject=req.subject,
+          body=req.body,
+          cc=req.cc,
+          bcc=req.bcc,
+          body_type=req.body_type,
           from_address=_from_address(req.from_),
       )
       return DraftResponse(id=created.get("id"), web_link=created.get("webLink"))
@@ -352,6 +368,7 @@ def send_message(*, to, subject, body, cc=None, bcc=None, body_type="Text", from
   mailboxes = ["me"] + shared
   # after
   from config import get_config
+
   mailboxes = ["me", *get_config().shared_mailboxes]
   ```
   Order among shared mailboxes is irrelevant for fan-out, so iterating the `frozenset` is fine.
