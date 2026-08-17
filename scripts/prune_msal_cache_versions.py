@@ -16,7 +16,12 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from google.cloud import secretmanager
 
-from clients.azure.graph_email_client import prune_secret_versions
+from clients.azure.graph_email_client import is_enabled_version, prune_secret_versions
+
+
+def _ids(versions: list) -> str:
+    """Version numbers, newest first — irreversible destroys deserve an explicit list."""
+    return ", ".join(v.name.rsplit("/", 1)[-1] for v in versions) or "(none)"
 
 
 def main() -> None:
@@ -25,17 +30,21 @@ def main() -> None:
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--secret", default=os.getenv("MSAL_SECRET_NAME", "msal-token-cache"))
     args = ap.parse_args()
+    keep = max(1, args.keep)  # matches prune_secret_versions' floor
     parent = f"projects/{os.environ['GCP_PROJECT_ID']}/secrets/{args.secret}"
     client = secretmanager.SecretManagerServiceClient()
     enabled = [
-        v
-        for v in client.list_secret_versions(request={"parent": parent})
-        if v.state.name == "ENABLED"
+        v for v in client.list_secret_versions(request={"parent": parent}) if is_enabled_version(v)
     ]
-    print(f"{len(enabled)} enabled versions; keeping {args.keep}")
+    # Secret Manager returns newest first, so this is exactly what the helper will do.
+    keeping, doomed = enabled[:keep], enabled[keep:]
+    print(f"{len(enabled)} enabled versions of {args.secret}; keeping the newest {keep}")
+    print(f"  KEEP    ({len(keeping)}): {_ids(keeping)}")
+    print(f"  DESTROY ({len(doomed)}): {_ids(doomed)}")
     if args.dry_run:
+        print("dry run — nothing destroyed")
         return
-    print("destroyed", prune_secret_versions(client, parent, keep=args.keep))
+    print("destroyed", prune_secret_versions(client, parent, keep=keep))
 
 
 if __name__ == "__main__":

@@ -22,21 +22,42 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 
 
-def prune_secret_versions(client, parent: str, keep: int | None = None) -> int:
+def is_enabled_version(version) -> bool:
+    """True if a Secret Manager version is ENABLED. `state` is an enum in the real
+    API but a plain value in fakes/odd responses, so read `.name` defensively."""
+    return getattr(version.state, "name", str(version.state)) == "ENABLED"
+
+
+def prune_secret_versions(
+    client, parent: str, keep: int | None = None, protect: str | None = None
+) -> int:
     """Destroy every ENABLED version of `parent` except the newest `keep`.
     Secret Manager bills per enabled version and every silent MSAL refresh
     adds one across all writer services (inbox's CFs + the schedule repo).
     `keep` defaults to the `MSAL_CACHE_KEEP_VERSIONS` env var (default 3) when
-    omitted. Best-effort — never raises; readers always fetch `latest`."""
+    omitted, and is clamped to >= 1 so a writer can never leave the secret with
+    zero enabled versions (that would break `versions/latest` for every reader).
+    `protect` is a version name that is never destroyed — callers pass the version
+    they just wrote so it survives regardless of `keep` or list ordering.
+    Best-effort — never raises; readers always fetch `latest`."""
     try:
         if keep is None:
             keep = int(os.getenv("MSAL_CACHE_KEEP_VERSIONS", "3"))
+        keep = max(1, keep)
         versions = list(client.list_secret_versions(request={"parent": parent}))
-        enabled = [v for v in versions if getattr(v.state, "name", str(v.state)) == "ENABLED"]
+        enabled = [v for v in versions if is_enabled_version(v)]
         destroyed = 0
         for v in enabled[keep:]:  # newest first
-            client.destroy_secret_version(request={"name": v.name})
-            destroyed += 1
+            name = getattr(v, "name", None)
+            if protect is not None and name == protect:
+                continue
+            # Per-version: a 429 or a version a concurrent writer already destroyed
+            # must not abort the rest of the loop (the backlog script destroys ~724).
+            try:
+                client.destroy_secret_version(request={"name": name})
+                destroyed += 1
+            except Exception:
+                logger.warning("Failed to destroy secret version %s (continuing)", name)
         if destroyed:
             logger.info("Pruned %d old MSAL cache versions (kept %d)", destroyed, keep)
         return destroyed
@@ -133,8 +154,9 @@ class GraphEmailClient:
         client = secretmanager.SecretManagerServiceClient()
         parent = f"projects/{project_id}/secrets/{secret_name}"
         payload = self.app.token_cache.serialize().encode("UTF-8")
-        client.add_secret_version(request={"parent": parent, "payload": {"data": payload}})
-        prune_secret_versions(client, parent)
+        added = client.add_secret_version(request={"parent": parent, "payload": {"data": payload}})
+        # Never let the prune destroy the version we just wrote.
+        prune_secret_versions(client, parent, protect=getattr(added, "name", None))
         logger.info("Persisted refreshed MSAL token cache to Secret Manager")
 
     def authenticate_headless(self) -> bool:
