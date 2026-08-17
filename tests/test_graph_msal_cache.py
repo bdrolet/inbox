@@ -35,3 +35,9 @@ def test_prune_never_raises():
             raise RuntimeError("perm")
 
     assert gec.prune_secret_versions(_Boom(), "projects/p/secrets/x", keep=3) == 0
+
+
+def test_prune_malformed_keep_env_never_raises(monkeypatch):
+    monkeypatch.setenv("MSAL_CACHE_KEEP_VERSIONS", "not-a-number")
+    c = _Client([_V(9), _V(8), _V(7)])
+    assert gec.prune_secret_versions(c, "projects/p/secrets/msal-token-cache") == 0

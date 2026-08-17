@@ -22,12 +22,15 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 
 
-def prune_secret_versions(client, parent: str, keep: int) -> int:
+def prune_secret_versions(client, parent: str, keep: int | None = None) -> int:
     """Destroy every ENABLED version of `parent` except the newest `keep`.
     Secret Manager bills per enabled version and every silent MSAL refresh
     adds one across all writer services (inbox's CFs + the schedule repo).
-    Best-effort — never raises; readers always fetch `latest`."""
+    `keep` defaults to the `MSAL_CACHE_KEEP_VERSIONS` env var (default 3) when
+    omitted. Best-effort — never raises; readers always fetch `latest`."""
     try:
+        if keep is None:
+            keep = int(os.getenv("MSAL_CACHE_KEEP_VERSIONS", "3"))
         versions = list(client.list_secret_versions(request={"parent": parent}))
         enabled = [v for v in versions if getattr(v.state, "name", str(v.state)) == "ENABLED"]
         destroyed = 0
@@ -131,7 +134,7 @@ class GraphEmailClient:
         parent = f"projects/{project_id}/secrets/{secret_name}"
         payload = self.app.token_cache.serialize().encode("UTF-8")
         client.add_secret_version(request={"parent": parent, "payload": {"data": payload}})
-        prune_secret_versions(client, parent, keep=int(os.getenv("MSAL_CACHE_KEEP_VERSIONS", "3")))
+        prune_secret_versions(client, parent)
         logger.info("Persisted refreshed MSAL token cache to Secret Manager")
 
     def authenticate_headless(self) -> bool:
