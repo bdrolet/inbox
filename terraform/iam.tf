@@ -83,13 +83,6 @@ resource "google_secret_manager_secret_iam_member" "process_cf_hf_token" {
   member    = "serviceAccount:${google_service_account.process_cf.email}"
 }
 
-resource "google_secret_manager_secret_iam_member" "process_cf_google_calendar" {
-  for_each  = toset(["google-calendar-client-id", "google-calendar-client-secret", "google-calendar-refresh-token"])
-  secret_id = google_secret_manager_secret.secrets[each.key].secret_id
-  role      = "roles/secretmanager.secretAccessor"
-  member    = "serviceAccount:${google_service_account.process_cf.email}"
-}
-
 # Publish email_classified / label_applied domain events (consumed by the
 # tasks repo — github.com/bdrolet/tasks)
 resource "google_pubsub_topic_iam_member" "process_cf_email_events_publisher" {

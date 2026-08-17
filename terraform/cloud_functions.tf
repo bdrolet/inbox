@@ -285,24 +285,6 @@ resource "google_cloudfunctions2_function" "process" {
       version    = "latest"
     }
     secret_environment_variables {
-      key        = "GOOGLE_CALENDAR_CLIENT_ID"
-      project_id = var.project_id
-      secret     = google_secret_manager_secret.secrets["google-calendar-client-id"].secret_id
-      version    = "latest"
-    }
-    secret_environment_variables {
-      key        = "GOOGLE_CALENDAR_CLIENT_SECRET"
-      project_id = var.project_id
-      secret     = google_secret_manager_secret.secrets["google-calendar-client-secret"].secret_id
-      version    = "latest"
-    }
-    secret_environment_variables {
-      key        = "GOOGLE_CALENDAR_REFRESH_TOKEN"
-      project_id = var.project_id
-      secret     = google_secret_manager_secret.secrets["google-calendar-refresh-token"].secret_id
-      version    = "latest"
-    }
-    secret_environment_variables {
       key        = "HF_TOKEN"
       project_id = var.project_id
       secret     = google_secret_manager_secret.secrets["hf-token"].secret_id
@@ -376,24 +358,6 @@ resource "google_cloudfunctions2_function" "calendar_action" {
       key        = "TENANT_ID"
       project_id = var.project_id
       secret     = google_secret_manager_secret.secrets["tenant-id"].secret_id
-      version    = "latest"
-    }
-    secret_environment_variables {
-      key        = "GOOGLE_CALENDAR_CLIENT_ID"
-      project_id = var.project_id
-      secret     = google_secret_manager_secret.secrets["google-calendar-client-id"].secret_id
-      version    = "latest"
-    }
-    secret_environment_variables {
-      key        = "GOOGLE_CALENDAR_CLIENT_SECRET"
-      project_id = var.project_id
-      secret     = google_secret_manager_secret.secrets["google-calendar-client-secret"].secret_id
-      version    = "latest"
-    }
-    secret_environment_variables {
-      key        = "GOOGLE_CALENDAR_REFRESH_TOKEN"
-      project_id = var.project_id
-      secret     = google_secret_manager_secret.secrets["google-calendar-refresh-token"].secret_id
       version    = "latest"
     }
   }
