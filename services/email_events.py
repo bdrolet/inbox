@@ -9,6 +9,10 @@ Calendar invites are deliberately NOT a dedicated payload field: invite facts
 travel as seed_key_points and the RSVP/calendar links as seed_links
 (invite_extras below), so the tasks service renders them with zero
 calendar-specific code.
+
+`graph_message_id` + `has_attachments` exist for the schedule repo
+(github.com/bdrolet/schedule), which owns all calendar logic and reads
+`.ics` attachments via Graph itself.
 """
 
 import logging
@@ -69,6 +73,10 @@ def build_event(msg: Message, classification: Classification, extras: dict | Non
         "draft_link": extras.get("draft_link"),
         "seed_key_points": extras.get("seed_key_points"),
         "seed_links": extras.get("seed_links"),
+        # Schedule fetches .ics attachments itself (owns all calendar logic):
+        # immutable Graph id + a cheap gate so it only calls Graph when needed.
+        "graph_message_id": msg["external_id"],
+        "has_attachments": bool(msg.get("has_attachments", False)),
     }
 
 
