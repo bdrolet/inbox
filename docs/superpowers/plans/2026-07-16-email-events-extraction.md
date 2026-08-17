@@ -176,8 +176,8 @@ Expected: FAIL with `KeyError: 'to'` (TypedDict missing keys).
 `services/ingestion.py` `normalize()` — add to the returned `Message` (after `subject=...`):
 
 ```python
-        to=[r.get("address", "") for r in email.to_recipients if r.get("address")],
-        cc=[r.get("address", "") for r in email.cc_recipients if r.get("address")],
+to = ([r.get("address", "") for r in email.to_recipients if r.get("address")],)
+cc = ([r.get("address", "") for r in email.cc_recipients if r.get("address")],)
 ```
 
 - [ ] **Step 4: Run tests — expect PASS**
@@ -383,9 +383,7 @@ _HTML_LIMIT = 200_000
 
 def publish(event: dict) -> None:
     pubsub.publish(_TOPIC, event)
-    logger.info(
-        "Published %s event for message_id=%s", event.get("event"), event.get("message_id")
-    )
+    logger.info("Published %s event for message_id=%s", event.get("event"), event.get("message_id"))
 
 
 def build_event(msg: Message, classification: Classification, extras: dict | None = None) -> dict:
@@ -678,9 +676,7 @@ def handle(classification: Classification, msg: Message) -> dict:
 
     try:
         draft_text = draft_svc.generate(msg)
-        extras["draft_link"] = get_graph_client().create_reply_draft(
-            msg["external_id"], draft_text
-        )
+        extras["draft_link"] = get_graph_client().create_reply_draft(msg["external_id"], draft_text)
     except Exception:
         logger.exception("Draft generation failed for message_id=%s", msg["id"])
     return extras

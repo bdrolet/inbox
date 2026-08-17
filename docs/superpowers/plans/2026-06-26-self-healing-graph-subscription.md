@@ -61,6 +61,7 @@ The renew module is a standalone Cloud Function that imports `functions_framewor
 which isn't a dependency of the main test venv. We stub it in sys.modules before
 importing, then load the module straight from its file path.
 """
+
 import importlib.util
 import sys
 import types
@@ -107,24 +108,32 @@ def _fail(*_a, **_k):
 def test_renew_patches_existing_subscription(monkeypatch):
     calls = {}
     monkeypatch.setattr(
-        renew_main, "_patch_subscription",
+        renew_main,
+        "_patch_subscription",
         lambda sid, tok: _Resp(200, {"id": sid, "expirationDateTime": "2026-07-01T00:00:00Z"}),
     )
-    monkeypatch.setattr(renew_main, "_register_subscription", lambda tok: calls.setdefault("registered", True))
-    monkeypatch.setattr(renew_main, "_save_subscription_id", lambda sid: calls.setdefault("saved", sid))
+    monkeypatch.setattr(
+        renew_main, "_register_subscription", lambda tok: calls.setdefault("registered", True)
+    )
+    monkeypatch.setattr(
+        renew_main, "_save_subscription_id", lambda sid: calls.setdefault("saved", sid)
+    )
 
     result = renew_main._renew_or_register("sub-123", "tok")
 
     assert result["id"] == "sub-123"
     assert "registered" not in calls  # must NOT re-register on a healthy subscription
-    assert "saved" not in calls       # secret must NOT be rewritten on a plain renewal
+    assert "saved" not in calls  # secret must NOT be rewritten on a plain renewal
 
 
 def test_renew_registers_replacement_on_404(monkeypatch):
     saved = {}
-    monkeypatch.setattr(renew_main, "_patch_subscription", lambda sid, tok: _Resp(404, text="ResourceNotFound"))
     monkeypatch.setattr(
-        renew_main, "_register_subscription",
+        renew_main, "_patch_subscription", lambda sid, tok: _Resp(404, text="ResourceNotFound")
+    )
+    monkeypatch.setattr(
+        renew_main,
+        "_register_subscription",
         lambda tok: {"id": "sub-new", "expirationDateTime": "2026-07-01T00:00:00Z"},
     )
     monkeypatch.setattr(renew_main, "_save_subscription_id", lambda sid: saved.update(id=sid))
@@ -139,7 +148,8 @@ def test_register_when_no_subscription_id(monkeypatch):
     saved = {}
     monkeypatch.setattr(renew_main, "_patch_subscription", _fail)  # patch must never run
     monkeypatch.setattr(
-        renew_main, "_register_subscription",
+        renew_main,
+        "_register_subscription",
         lambda tok: {"id": "sub-boot", "expirationDateTime": "2026-07-01T00:00:00Z"},
     )
     monkeypatch.setattr(renew_main, "_save_subscription_id", lambda sid: saved.update(id=sid))
@@ -151,7 +161,9 @@ def test_register_when_no_subscription_id(monkeypatch):
 
 
 def test_non_404_error_does_not_register(monkeypatch):
-    monkeypatch.setattr(renew_main, "_patch_subscription", lambda sid, tok: _Resp(401, text="Unauthorized"))
+    monkeypatch.setattr(
+        renew_main, "_patch_subscription", lambda sid, tok: _Resp(401, text="Unauthorized")
+    )
     monkeypatch.setattr(renew_main, "_register_subscription", _fail)  # never register on a 401
     monkeypatch.setattr(renew_main, "_save_subscription_id", _fail)
 
@@ -303,24 +315,33 @@ def _renew_or_register(subscription_id: str, token: str) -> dict:
         logger.warning("No subscription ID on file -- registering a new subscription")
         sub = _register_subscription(token)
         _save_subscription_id(sub["id"])
-        logger.info("Registered subscription %s (expires %s)", sub["id"], sub.get("expirationDateTime"))
+        logger.info(
+            "Registered subscription %s (expires %s)", sub["id"], sub.get("expirationDateTime")
+        )
         return sub
 
     resp = _patch_subscription(subscription_id, token)
     if resp.status_code == 404:
-        logger.warning("Subscription %s not found (404) -- registering a replacement", subscription_id)
+        logger.warning(
+            "Subscription %s not found (404) -- registering a replacement", subscription_id
+        )
         sub = _register_subscription(token)
         _save_subscription_id(sub["id"])
         logger.info(
             "Registered replacement subscription %s (expires %s)",
-            sub["id"], sub.get("expirationDateTime"),
+            sub["id"],
+            sub.get("expirationDateTime"),
         )
         return sub
     if not resp.ok:
         logger.error("Graph PATCH %s returned %d: %s", subscription_id, resp.status_code, resp.text)
         resp.raise_for_status()
 
-    logger.info("Renewed subscription %s -- new expiry: %s", subscription_id, resp.json().get("expirationDateTime"))
+    logger.info(
+        "Renewed subscription %s -- new expiry: %s",
+        subscription_id,
+        resp.json().get("expirationDateTime"),
+    )
     return resp.json()
 
 

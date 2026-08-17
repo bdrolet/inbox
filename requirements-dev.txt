@@ -1,4 +1,7 @@
-ruff>=0.4
+# Pinned exactly: formatter output changes between releases, so an unpinned
+# ruff silently reformats the repo out from under CI (0.16.x began formatting
+# Python code blocks inside Markdown). Bump deliberately, with a format run.
+ruff==0.16.3
 mypy>=1.10
 pytest>=8.0
 pre-commit>=3.7

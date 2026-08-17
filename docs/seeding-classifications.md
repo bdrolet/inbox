@@ -88,6 +88,7 @@ If you labeled something wrong, correct it directly:
 
 ```python
 from services.labeling import apply_label
+
 apply_label("<message_id>", "correct_category", source="human_correction")
 ```
 

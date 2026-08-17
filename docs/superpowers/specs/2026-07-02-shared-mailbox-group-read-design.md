@@ -128,7 +128,7 @@ GET /emails/{id}/attachments?mailbox=...                 (same three forms)
 ```python
 class Post(BaseModel):
     id: str | None = None
-    thread_id: str | None = None      # needed to trace a post's attachments
+    thread_id: str | None = None  # needed to trace a post's attachments
     sender_name: str | None = None
     sender_email: str | None = None
     body: str | None = None

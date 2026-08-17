@@ -15,12 +15,12 @@ Export a baseline at the **start** of every invocation, before any work is done.
 ```python
 @functions_framework.cloud_event
 def process(cloud_event: CloudEvent) -> None:
-    otel.flush()          # baseline export (counter=N or 0 on cold start)
+    otel.flush()  # baseline export (counter=N or 0 on cold start)
     try:
         do_work()
         otel.emails_processed.add(1, {"category": "ignore"})
     finally:
-        otel.flush()      # post-work export (counter=N+1)
+        otel.flush()  # post-work export (counter=N+1)
 ```
 
 For warm invocations, the pre-flush exports the accumulated count from previous emails on this instance (counter=N), and the post-flush exports N+1. Both produce valid deltas.
@@ -35,6 +35,7 @@ Store the reader at module level:
 # clients/otel.py
 _metric_reader: PeriodicExportingMetricReader | None = None
 
+
 def setup_telemetry(service_name: str) -> None:
     global _metric_reader
     ...
@@ -43,6 +44,7 @@ def setup_telemetry(service_name: str) -> None:
         export_interval_millis=60_000,
     )
     _meter_provider = MeterProvider(resource=resource, metric_readers=[_metric_reader])
+
 
 def flush() -> None:
     if _tracer_provider is not None:
@@ -118,9 +120,7 @@ In the gen2 Cloud Functions runtime the app is served by gunicorn, which configu
 **Fix** — force the handler (`main.py`, at import, before `otel.setup_telemetry()`):
 
 ```python
-logging.basicConfig(
-    level=logging.INFO, format="%(levelname)s %(name)s %(message)s", force=True
-)
+logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s", force=True)
 ```
 
 `force=True` (Python 3.8+) removes any pre-existing root handlers and installs a fresh stderr handler at INFO, so app logs reach stderr → Cloud Logging. The OTLP handler is still added afterward by `otel.setup_telemetry`, so logs continue to Grafana too — you get both destinations.

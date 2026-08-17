@@ -105,10 +105,13 @@ To re-register (e.g. after subscription expires — `register()` sends the immut
 ```python
 from clients.azure import GraphEmailClient
 from clients.graph_subscriptions import register
+
 c = GraphEmailClient()
 c.authenticate_headless()  # or authenticate_interactive() locally
 result = register(c, "https://inbox-webhook-aizbgjlava-uc.a.run.app")
-print(result["id"])  # write to the graph-subscription-id secret (authoritative); update GRAPH_SUBSCRIPTION_ID for DR
+print(
+    result["id"]
+)  # write to the graph-subscription-id secret (authoritative); update GRAPH_SUBSCRIPTION_ID for DR
 ```
 
 ## Local development
