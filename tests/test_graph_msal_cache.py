@@ -96,7 +96,9 @@ def test_save_cache_prune_failure_never_breaks_authentication(monkeypatch):
             raise RuntimeError("permission denied")
 
     client = _SaveClient([new_version, _V(9), _V(8), _V(7), _V(6)])
-    monkeypatch.setattr(secretmanager, "SecretManagerServiceClient", lambda: client)
+    # `raising=False`: CI installs only requirements-dev.txt (no google-cloud-secret-manager),
+    # so tests/test_renew.py substitutes a bare module stub with no client attribute.
+    monkeypatch.setattr(secretmanager, "SecretManagerServiceClient", lambda: client, raising=False)
     monkeypatch.setenv("GCP_PROJECT_ID", "p")
     monkeypatch.delenv("MSAL_CACHE_KEEP_VERSIONS", raising=False)
 
@@ -123,7 +125,9 @@ def test_save_cache_protects_the_version_it_just_wrote(monkeypatch):
     # Secret Manager lists newest first, but assert the guard holds even if the
     # freshly added version lands outside the keep window.
     client = _SaveClient([_V(9), _V(8), _V(7), new_version])
-    monkeypatch.setattr(secretmanager, "SecretManagerServiceClient", lambda: client)
+    # `raising=False`: CI installs only requirements-dev.txt (no google-cloud-secret-manager),
+    # so tests/test_renew.py substitutes a bare module stub with no client attribute.
+    monkeypatch.setattr(secretmanager, "SecretManagerServiceClient", lambda: client, raising=False)
     monkeypatch.setenv("GCP_PROJECT_ID", "p")
     monkeypatch.delenv("MSAL_CACHE_KEEP_VERSIONS", raising=False)
 
