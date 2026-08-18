@@ -102,6 +102,22 @@ def test_build_event_prefers_redirector_link(monkeypatch):
     assert event["web_link"] == "https://api.example/r/m1"
 
 
+def test_build_event_carries_graph_message_id_and_has_attachments(monkeypatch):
+    monkeypatch.delenv("REDIRECTOR_BASE_URL", raising=False)
+    msg = {**_msg(), "has_attachments": True}
+    ev = email_events.build_event(msg, _classification(), None)
+    assert ev["graph_message_id"] == "ext-1"
+    assert ev["has_attachments"] is True
+
+
+def test_build_event_has_attachments_defaults_false(monkeypatch):
+    monkeypatch.delenv("REDIRECTOR_BASE_URL", raising=False)
+    ev = email_events.build_event(
+        _msg(), _classification(), None
+    )  # _msg has no has_attachments key
+    assert ev["has_attachments"] is False and ev["graph_message_id"] == "ext-1"
+
+
 def test_invite_extras_builds_points_and_rsvp_links(monkeypatch):
     monkeypatch.setenv("WEBHOOK_URL", "https://inbox-webhook.example")
     monkeypatch.setenv("WEBHOOK_LABEL_TOKEN", "tok")

@@ -41,3 +41,31 @@ def test_normalize_carries_to_and_cc():
     msg = ingestion.normalize(email)
     assert msg["to"] == ["ben@drolet.cloud"]
     assert msg["cc"] == ["team@example.com"]
+
+
+def test_normalize_carries_has_attachments():
+    from clients.azure.email import Email
+
+    email = Email(
+        {
+            "id": "AAMk1",
+            "subject": "s",
+            "hasAttachments": True,
+            "from": {},
+            "toRecipients": [],
+            "ccRecipients": [],
+            "body": {},
+        }
+    )
+    assert ingestion.normalize(email)["has_attachments"] is True
+    email2 = Email(
+        {
+            "id": "AAMk2",
+            "subject": "s",
+            "from": {},
+            "toRecipients": [],
+            "ccRecipients": [],
+            "body": {},
+        }
+    )
+    assert ingestion.normalize(email2)["has_attachments"] is False
