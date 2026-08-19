@@ -118,6 +118,21 @@ def test_build_event_has_attachments_defaults_false(monkeypatch):
     assert ev["has_attachments"] is False and ev["graph_message_id"] == "ext-1"
 
 
+def test_build_event_is_meeting_message_defaults_false(monkeypatch):
+    monkeypatch.delenv("REDIRECTOR_BASE_URL", raising=False)
+    ev = email_events.build_event(
+        _msg(), _classification(), None
+    )  # _msg has no is_meeting_message key
+    assert ev["is_meeting_message"] is False
+
+
+def test_build_event_carries_is_meeting_message(monkeypatch):
+    monkeypatch.delenv("REDIRECTOR_BASE_URL", raising=False)
+    msg = {**_msg(), "is_meeting_message": True}
+    ev = email_events.build_event(msg, _classification(), None)
+    assert ev["is_meeting_message"] is True
+
+
 def test_invite_extras_builds_points_and_rsvp_links(monkeypatch):
     monkeypatch.setenv("WEBHOOK_URL", "https://inbox-webhook.example")
     monkeypatch.setenv("WEBHOOK_LABEL_TOKEN", "tok")

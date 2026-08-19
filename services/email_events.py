@@ -12,7 +12,8 @@ calendar-specific code.
 
 `graph_message_id` + `has_attachments` exist for the schedule repo
 (github.com/bdrolet/schedule), which owns all calendar logic and reads
-`.ics` attachments via Graph itself.
+`.ics` attachments via Graph itself. `is_meeting_message` flags Exchange-native
+meeting request/cancel/response messages, which carry no `.ics` attachment.
 """
 
 import logging
@@ -77,6 +78,10 @@ def build_event(msg: Message, classification: Classification, extras: dict | Non
         # immutable Graph id + a cheap gate so it only calls Graph when needed.
         "graph_message_id": msg["external_id"],
         "has_attachments": bool(msg.get("has_attachments", False)),
+        # Exchange-native meeting request/cancel/response (@odata.type
+        # #microsoft.graph.eventMessage*) — no .ics attachment, so schedule
+        # needs this hint to detect the meeting without relying on has_attachments.
+        "is_meeting_message": bool(msg.get("is_meeting_message", False)),
     }
 
 

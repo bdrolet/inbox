@@ -25,6 +25,7 @@ class Email:
         self.attachments = data.get("attachments", [])
         self.web_link = data.get("webLink")
         self.categories = data.get("categories", [])
+        self.odata_type = data.get("@odata.type", "") or ""
 
         if self.received_datetime:
             try:

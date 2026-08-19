@@ -18,3 +18,4 @@ class Message(TypedDict):
     raw: dict  # original provider payload
     web_link: Optional[str]  # Outlook web URL (from Graph webLink property)
     has_attachments: bool  # Graph hasAttachments — schedule uses it to decide whether to fetch .ics
+    is_meeting_message: bool  # Graph @odata.type starts with #microsoft.graph.eventMessage (Exchange-native meeting request/cancel/response, no .ics)
