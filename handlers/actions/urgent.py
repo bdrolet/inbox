@@ -1,19 +1,14 @@
 import logging
 
 import clients.ntfy as ntfy
-from handlers.actions._shared import prepare
 from models.message import Message
 from models.types import Classification
-from services import email_events
 from services.links import redirector_url
 
 logger = logging.getLogger(__name__)
 
 
 def handle(classification: Classification, msg: Message) -> dict:
-    invite = prepare(msg)
-    points, links = email_events.invite_extras(str(msg["id"]), invite)
-
     try:
         ntfy.notify(
             message_id=str(msg["id"] or ""),
@@ -27,6 +22,6 @@ def handle(classification: Classification, msg: Message) -> dict:
         )
         logger.info("ntfy notification sent for message_id=%s", msg["id"])
     except Exception:
-        # A push failure must not cost the published event its invite seeds.
+        # A push failure must not cost the published event its email_classified emission.
         logger.exception("ntfy notification failed for message_id=%s", msg["id"])
-    return {"seed_key_points": points or None, "seed_links": links or None}
+    return {}
