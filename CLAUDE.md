@@ -120,7 +120,7 @@ print(
 python3.13 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env  # fill in CLIENT_ID, CLIENT_SECRET, TENANT_ID, ANTHROPIC_API_KEY, ...
-python scripts/analyze_emails.py  # interactive mode, no GCP_PROJECT_ID set
+.venv/bin/python .claude/skills/testing-inbox-pipeline/scripts/run-pipeline-local.py  # full pipeline against a real email, no GCP_PROJECT_ID set
 ```
 
 

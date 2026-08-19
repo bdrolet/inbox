@@ -92,10 +92,10 @@ rm /tmp/msal_cache.json
 ### Run locally
 
 ```bash
-python scripts/analyze_emails.py
+.venv/bin/python .claude/skills/testing-inbox-pipeline/scripts/run-pipeline-local.py
 ```
 
-Runs in interactive mode: fetches the latest 10 emails, unread emails, and emails from the last 24 hours. Prints classifications to stdout. Does not move any emails unless `EMAIL_ANALYSIS_MOVE_TO_ACTION_FOLDERS=true` is set.
+Runs the full pipeline (fetch → normalize → embed → classify → store → dispatch) against a real email — the closest local equivalent to the processor Cloud Function. Without `--message-id` it picks the most recent unprocessed email from the Inbox. Leave `GCP_PROJECT_ID` unset so Graph auth uses the interactive device-code flow; the `email_classified` publish fails soft as a result. See the `testing-inbox-pipeline` skill for required `.env` vars and gotchas.
 
 ## Deployment
 
