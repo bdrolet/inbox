@@ -58,6 +58,39 @@ def test_normalize_carries_has_attachments():
         }
     )
     assert ingestion.normalize(email)["has_attachments"] is True
+
+
+def test_normalize_flags_meeting_message():
+    from clients.azure.email import Email
+
+    email = Email(
+        {
+            "id": "AAMk2",
+            "subject": "s",
+            "@odata.type": "#microsoft.graph.eventMessageRequest",
+            "from": {},
+            "toRecipients": [],
+            "ccRecipients": [],
+            "body": {},
+        }
+    )
+    assert ingestion.normalize(email)["is_meeting_message"] is True
+
+
+def test_normalize_meeting_message_false_without_odata_type():
+    from clients.azure.email import Email
+
+    email = Email(
+        {
+            "id": "AAMk3",
+            "subject": "s",
+            "from": {},
+            "toRecipients": [],
+            "ccRecipients": [],
+            "body": {},
+        }
+    )
+    assert ingestion.normalize(email)["is_meeting_message"] is False
     email2 = Email(
         {
             "id": "AAMk2",
