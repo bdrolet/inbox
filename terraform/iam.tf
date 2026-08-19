@@ -127,13 +127,6 @@ resource "google_pubsub_topic_iam_member" "webhook_cf_labels_publisher" {
   member = "serviceAccount:${google_service_account.webhook_cf.email}"
 }
 
-# Publish to inbox-calendar topic (RSVP action buttons)
-resource "google_pubsub_topic_iam_member" "webhook_cf_calendar_publisher" {
-  topic  = google_pubsub_topic.inbox_calendar.name
-  role   = "roles/pubsub.publisher"
-  member = "serviceAccount:${google_service_account.webhook_cf.email}"
-}
-
 # Read the Grafana OTLP endpoint and token from Secret Manager
 resource "google_secret_manager_secret_iam_member" "webhook_cf_grafana" {
   for_each  = toset(["grafana-otlp-endpoint", "grafana-otlp-token"])

@@ -11,11 +11,6 @@ resource "google_pubsub_topic" "inbox_labels" {
   depends_on = [google_project_service.apis]
 }
 
-resource "google_pubsub_topic" "inbox_calendar" {
-  name       = "inbox-calendar"
-  depends_on = [google_project_service.apis]
-}
-
 # Domain events: one email_classified per processed email + label_applied
 # feedback. The tasks repo's CF subscribes (its terraform references this
 # topic by name — this apply must run before the tasks repo's apply).

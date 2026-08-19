@@ -38,7 +38,6 @@ logger = logging.getLogger(__name__)
 _publisher: pubsub_v1.PublisherClient | None = None
 _messages_topic: str | None = None
 _labels_topic: str | None = None
-_calendar_topic: str | None = None
 _tracer_provider: TracerProvider | None = None
 
 
@@ -69,15 +68,14 @@ def _get_tracer() -> trace.Tracer:
     return trace.get_tracer("inbox-webhook")
 
 
-def _publisher_client() -> tuple[pubsub_v1.PublisherClient, str, str, str]:
-    global _publisher, _messages_topic, _labels_topic, _calendar_topic
+def _publisher_client() -> tuple[pubsub_v1.PublisherClient, str, str]:
+    global _publisher, _messages_topic, _labels_topic
     if _publisher is None:
         _publisher = pubsub_v1.PublisherClient()
         project = os.environ["GCP_PROJECT_ID"]
         _messages_topic = _publisher.topic_path(project, "inbox-messages")
         _labels_topic = _publisher.topic_path(project, "inbox-labels")
-        _calendar_topic = _publisher.topic_path(project, "inbox-calendar")
-    return _publisher, _messages_topic, _labels_topic, _calendar_topic
+    return _publisher, _messages_topic, _labels_topic
 
 
 _setup_telemetry()
@@ -91,32 +89,9 @@ def webhook(request):
         logger.info("Graph subscription validation handshake")
         return validation_token, 200, {"Content-Type": "text/plain"}
 
-    publisher, messages_topic, labels_topic, calendar_topic = _publisher_client()
+    publisher, messages_topic, labels_topic = _publisher_client()
 
     try:
-        # Calendar RSVP action buttons (accept / decline / maybe)
-        if request.path == "/calendar":
-            expected = os.environ.get("WEBHOOK_LABEL_TOKEN")
-            if expected:
-                auth = request.headers.get("Authorization", "")
-                token = request.args.get("token", "")
-                if auth != f"Bearer {expected}" and token != expected:
-                    logger.warning("Rejected /calendar request — invalid auth")
-                    return "", 403
-            message_id = request.args.get("id")
-            action = request.args.get("action")
-            logger.info("Calendar action: id=%s action=%s", message_id, action)
-            # .result() blocks until the broker acks — the client batches on a
-            # background thread, and an instance frozen after the response can
-            # silently drop an unflushed publish.
-            publisher.publish(
-                calendar_topic,
-                json.dumps({"message_id": message_id, "action": action}).encode(),
-            ).result(timeout=30)
-            if request.method == "GET":
-                return f"Action '{action}' queued.", 200, {"Content-Type": "text/plain"}
-            return "", 202
-
         # Human feedback from ntfy action buttons or Asana task action links
         if request.path == "/label":
             expected = os.environ.get("WEBHOOK_LABEL_TOKEN")

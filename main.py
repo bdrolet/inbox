@@ -3,7 +3,6 @@ Cloud Function entry points: inbox message processor and label handler.
 
 process        — triggered by Pub/Sub inbox-messages topic; runs the full classification pipeline.
 label          — triggered by Pub/Sub inbox-labels topic; applies human feedback to the vector store.
-calendar_action — triggered by Pub/Sub inbox-calendar topic; handles Accept/Decline/Maybe RSVPs.
 
 Search is handled by the inbox-api Cloud Run service (api/main.py).
 
@@ -73,23 +72,6 @@ def process(cloud_event: CloudEvent) -> None:
     otel.flush()
     try:
         run_pipeline(notification, _get_model(), context=ctx)
-    finally:
-        otel.flush()
-
-
-@functions_framework.cloud_event
-def calendar_action(cloud_event: CloudEvent) -> None:
-    data = base64.b64decode(cloud_event.data["message"]["data"]).decode()
-    payload = json.loads(data)
-    message_id = payload.get("message_id")
-    action = payload.get("action")
-    logger.info("Calendar action received: message_id=%s action=%s", message_id, action)
-    otel.flush()
-    try:
-        from services.calendar_response import apply
-
-        apply(message_id=message_id, action=action)
-        logger.info("Calendar action applied — message_id=%s action=%s", message_id, action)
     finally:
         otel.flush()
 

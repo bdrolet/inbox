@@ -13,7 +13,6 @@ msal>=1.24.0
 python-dotenv>=1.0.0
 fastapi>=0.111
 tzdata>=2024.1  # services.sweep_rules imports zoneinfo at module load
-icalendar>=5.0
 anthropic>=0.25
 google-cloud-pubsub>=2.18.0
 opentelemetry-sdk>=1.24
