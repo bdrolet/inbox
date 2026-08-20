@@ -45,7 +45,8 @@ def publish(event: dict) -> None:
 
 def build_event(msg: Message, classification: Classification, extras: dict | None = None) -> dict:
     """Assemble the email_classified payload from the message, its
-    classification, and the action handler's extras (draft_link, invite seeds)."""
+    classification, and the action handler's extras (draft_link and any other
+    handler extras)."""
     extras = extras or {}
     received = msg["received_at"]
     return {

@@ -249,7 +249,6 @@ def test_build_event_seed_fields_are_none_without_extras(monkeypatch):
 
 def test_urgent_survives_ntfy_outage(monkeypatch):
     monkeypatch.delenv("REDIRECTOR_BASE_URL", raising=False)
-    monkeypatch.setenv("WEBHOOK_URL", "https://inbox-webhook.example")
 
     def _boom(**kwargs):
         raise RuntimeError("ntfy down")
