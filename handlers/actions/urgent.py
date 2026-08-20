@@ -22,6 +22,6 @@ def handle(classification: Classification, msg: Message) -> dict:
         )
         logger.info("ntfy notification sent for message_id=%s", msg["id"])
     except Exception:
-        # A push failure must not cost the published event its email_classified emission.
+        # Swallow push failures — classification and the email_classified event must still land.
         logger.exception("ntfy notification failed for message_id=%s", msg["id"])
     return {}

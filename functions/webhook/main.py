@@ -1,11 +1,12 @@
 """
 Cloud Function: inbox webhook receiver.
 
-Handles three interactions:
+Handles four interactions:
   GET  ?validationToken=...  — subscription validation handshake (must reply in 10s)
   POST /                     — change notification; publishes each created message to Pub/Sub
   POST /label                — human feedback from ntfy action buttons; publishes to inbox-labels
   GET  /label?...&token=...  — human feedback from Asana action links (browser click); same effect
+  GET  /calendar?...         — legacy RSVP link from before schedule owned calendar; returns 410
 
 Deploy with:
   gcloud functions deploy inbox-webhook \
@@ -92,6 +93,15 @@ def webhook(request):
     publisher, messages_topic, labels_topic = _publisher_client()
 
     try:
+        if request.path == "/calendar":
+            # RSVP moved to the schedule repo; legacy links from old tasks/pushes land here.
+            logger.info("Legacy /calendar RSVP link hit — handled by schedule now")
+            return (
+                "RSVP handling moved to the schedule service.",
+                410,
+                {"Content-Type": "text/plain"},
+            )
+
         # Human feedback from ntfy action buttons or Asana task action links
         if request.path == "/label":
             expected = os.environ.get("WEBHOOK_LABEL_TOKEN")
