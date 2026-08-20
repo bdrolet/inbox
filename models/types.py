@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from datetime import datetime
 from enum import Enum
 
 
@@ -26,17 +25,3 @@ class Classification:
     tags: list[str]
     reasoning: str
     importance: Importance = Importance.P2
-
-
-@dataclass
-class CalendarInvite:
-    message_id: str
-    graph_message_id: str
-    ical_uid: str
-    title: str
-    start: datetime
-    end: datetime
-    timezone: str
-    organizer: str
-    zoom_link: str | None
-    location: str | None

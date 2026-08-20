@@ -31,7 +31,7 @@ Run from the repo root (`/Users/ben/src/inbox`). All required env vars are read 
 | `ANTHROPIC_API_KEY` | Anthropic API key |
 | `CLOUD_SQL_CONNECTION_NAME` | `bens-project-462804:us-central1:inbox` |
 | `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` | Cloud SQL credentials |
-| `WEBHOOK_URL`, `WEBHOOK_LABEL_TOKEN` | For ntfy action button URLs and calendar RSVP links |
+| `WEBHOOK_URL`, `WEBHOOK_LABEL_TOKEN` | For ntfy action button URLs and the `/label` feedback callbacks |
 
 **Gotchas:**
 - Graph auth uses interactive device-code flow locally (token cached at `~/.inbox-token-cache.json`). Re-auth only needed if the cache expires.

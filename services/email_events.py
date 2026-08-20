@@ -5,26 +5,21 @@ repo, github.com/bdrolet/tasks, owns the policy for which become Asana tasks)
 plus label_applied feedback events. Tasks' models/events.py mirrors these
 payloads exactly.
 
-Calendar invites are deliberately NOT a dedicated payload field: invite facts
-travel as seed_key_points and the RSVP/calendar links as seed_links
-(invite_extras below), so the tasks service renders them with zero
-calendar-specific code.
-
-`graph_message_id` + `has_attachments` exist for the schedule repo
-(github.com/bdrolet/schedule), which owns all calendar logic and reads
-`.ics` attachments via Graph itself. `is_meeting_message` flags Exchange-native
-meeting request/cancel/response messages, which carry no `.ics` attachment.
+Calendar invites are not inbox's concern: the schedule repo
+(github.com/bdrolet/schedule) owns all calendar logic and reads `.ics`
+attachments via Graph itself, using the `graph_message_id`/`has_attachments`
+fields below. `is_meeting_message` flags Exchange-native meeting
+request/cancel/response messages, which carry no `.ics` attachment.
+`seed_key_points`/`seed_links` remain generic hooks for handler extras.
 """
 
 import logging
-import os
-import urllib.parse
 from datetime import datetime
 
 import clients.otel as otel
 from clients import pubsub
 from models.message import Message
-from models.types import CalendarInvite, Classification
+from models.types import Classification
 from services.links import redirector_url
 
 logger = logging.getLogger(__name__)
@@ -50,7 +45,8 @@ def publish(event: dict) -> None:
 
 def build_event(msg: Message, classification: Classification, extras: dict | None = None) -> dict:
     """Assemble the email_classified payload from the message, its
-    classification, and the action handler's extras (draft_link, invite seeds)."""
+    classification, and the action handler's extras (draft_link and any other
+    handler extras)."""
     extras = extras or {}
     received = msg["received_at"]
     return {
@@ -83,51 +79,3 @@ def build_event(msg: Message, classification: Classification, extras: dict | Non
         # needs this hint to detect the meeting without relying on has_attachments.
         "is_meeting_message": bool(msg.get("is_meeting_message", False)),
     }
-
-
-def invite_extras(
-    message_id: str, invite: CalendarInvite | None
-) -> tuple[list[str], list[list[str]]]:
-    """Fold a calendar invite into generic task_create fields.
-
-    Returns (key_points lines, [url, label] links) to append to the event's
-    key_points and relevant_links. RSVP links hit inbox's webhook /calendar
-    endpoint (GET, token-authenticated) — same URLs the old Asana calendar
-    block used.
-    """
-    if invite is None:
-        return [], []
-
-    start = invite.start.strftime("%Y-%m-%d %H:%M %Z") if invite.start else ""
-    end = invite.end.strftime("%H:%M %Z") if invite.end else ""
-    points = [
-        f"Calendar invite: {invite.title or '(untitled)'} — {start}–{end}, "
-        f"organizer {invite.organizer or 'unknown'}"
-    ]
-    if invite.location:
-        points.append(f"Location: {invite.location}")
-
-    webhook_url = os.environ.get("WEBHOOK_URL", "")
-    label_token = os.environ.get("WEBHOOK_LABEL_TOKEN", "")
-
-    def cal_url(action: str) -> str:
-        params = f"id={message_id}&action={action}"
-        if label_token:
-            params += f"&token={urllib.parse.quote(label_token, safe='')}"
-        return f"{webhook_url}/calendar?{params}"
-
-    links: list[list[str]] = []
-    if invite.zoom_link:
-        links.append([invite.zoom_link, "Join Zoom"])
-    gcal = (
-        "https://calendar.google.com/calendar/render?action=TEMPLATE"
-        f"&text={urllib.parse.quote(invite.title or '')}"
-        f"&dates={invite.start.strftime('%Y%m%dT%H%M%SZ') if invite.start else ''}"
-        f"/{invite.end.strftime('%Y%m%dT%H%M%SZ') if invite.end else ''}"
-        f"&location={urllib.parse.quote(invite.location or invite.zoom_link or '')}"
-    )
-    links.append([gcal, "Open in Google Calendar"])
-    links.append([cal_url("accept"), "RSVP: Accept"])
-    links.append([cal_url("decline"), "RSVP: Decline"])
-    links.append([cal_url("maybe"), "RSVP: Maybe"])
-    return points, links

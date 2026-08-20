@@ -5,8 +5,8 @@ from datetime import UTC, datetime
 import pytest
 
 # Stub the heavy DB module the handler chain imports at load time
-# (handlers.actions._shared -> services.calendar_invite -> clients.db -> psycopg,
-# which needs libpq and isn't available on this machine).
+# (services.labeling -> clients.db -> psycopg, which needs libpq and isn't
+# available on this machine).
 # NOTE: these sys.modules stubs persist for the whole pytest session once this
 # file is collected — any later test file wanting the REAL clients.db /
 # repo.classifications / repo.embeddings must install its own via monkeypatch.
@@ -36,7 +36,7 @@ import handlers.actions.respond as respond  # noqa: E402
 import handlers.actions.review as review  # noqa: E402
 import handlers.actions.urgent as urgent  # noqa: E402
 from clients import pubsub  # noqa: E402
-from models.types import CalendarInvite, Category, Classification, Importance  # noqa: E402
+from models.types import Category, Classification, Importance  # noqa: E402
 from services import email_events, labeling  # noqa: E402
 
 
@@ -64,21 +64,6 @@ def _msg() -> dict:
         "body": "hello " * 3000,  # 18k chars — must truncate to 10k
         "body_html": '<p>See <a href="https://docs.example/q2">the report</a></p>',
     }
-
-
-def _invite() -> CalendarInvite:
-    return CalendarInvite(
-        message_id="m1",
-        graph_message_id="g1",
-        ical_uid="u1",
-        title="Standup",
-        start=datetime(2026, 7, 20, 14, 0, tzinfo=UTC),
-        end=datetime(2026, 7, 20, 14, 30, tzinfo=UTC),
-        timezone="UTC",
-        organizer="alice@b.com",
-        zoom_link="https://zoom.us/j/1",
-        location=None,
-    )
 
 
 def test_build_event_maps_and_truncates(monkeypatch):
@@ -133,26 +118,6 @@ def test_build_event_carries_is_meeting_message(monkeypatch):
     assert ev["is_meeting_message"] is True
 
 
-def test_invite_extras_builds_points_and_rsvp_links(monkeypatch):
-    monkeypatch.setenv("WEBHOOK_URL", "https://inbox-webhook.example")
-    monkeypatch.setenv("WEBHOOK_LABEL_TOKEN", "tok")
-    points, links = email_events.invite_extras("m1", _invite())
-    assert points[0].startswith("Calendar invite: Standup — 2026-07-20 14:00 UTC–14:30 UTC")
-    assert [label for _, label in links] == [
-        "Join Zoom",
-        "Open in Google Calendar",
-        "RSVP: Accept",
-        "RSVP: Decline",
-        "RSVP: Maybe",
-    ]
-    accept = next(url for url, label in links if label == "RSVP: Accept")
-    assert accept == "https://inbox-webhook.example/calendar?id=m1&action=accept&token=tok"
-
-
-def test_invite_extras_none_invite():
-    assert email_events.invite_extras("m1", None) == ([], [])
-
-
 def test_dispatch_publishes_for_categories_without_handlers(monkeypatch):
     monkeypatch.delenv("REDIRECTOR_BASE_URL", raising=False)
     monkeypatch.setattr(dispatch_mod.archiving, "apply_tags", lambda m, c: None)
@@ -168,7 +133,7 @@ def test_dispatch_publishes_for_categories_without_handlers(monkeypatch):
 def test_dispatch_publishes_even_when_handler_raises(monkeypatch):
     monkeypatch.delenv("REDIRECTOR_BASE_URL", raising=False)
     monkeypatch.setattr(dispatch_mod.archiving, "apply_tags", lambda m, c: None)
-    monkeypatch.setattr(review, "prepare", lambda msg: 1 / 0)
+    monkeypatch.setitem(dispatch_mod._HANDLERS, Category.REVIEW, lambda c, m: 1 / 0)
     published = []
     monkeypatch.setattr(email_events, "publish", lambda e: published.append(e))
 
@@ -179,22 +144,11 @@ def test_dispatch_publishes_even_when_handler_raises(monkeypatch):
     assert published[0]["seed_key_points"] is None
 
 
-def test_review_returns_invite_seeds(monkeypatch):
-    monkeypatch.setenv("WEBHOOK_URL", "https://inbox-webhook.example")
-    monkeypatch.setenv("WEBHOOK_LABEL_TOKEN", "tok")
-    monkeypatch.setattr(review, "prepare", lambda msg: _invite())
-
-    extras = review.handle(_classification(), _msg())
-
-    assert any(p.startswith("Calendar invite: Standup") for p in extras["seed_key_points"])
-    labels = [label for _, label in extras["seed_links"]]
-    assert "Join Zoom" in labels and "RSVP: Accept" in labels
-    accept_url = next(url for url, label in extras["seed_links"] if label == "RSVP: Accept")
-    assert accept_url.startswith("https://inbox-webhook.example/calendar?id=m1&action=accept")
+def test_review_returns_no_extras():
+    assert review.handle(_classification(), _msg()) == {}
 
 
 def test_respond_returns_draft_link(monkeypatch):
-    monkeypatch.setattr(respond, "prepare", lambda msg: None)
     monkeypatch.setattr(respond.draft_svc, "generate", lambda msg: "draft text")
 
     class FakeGraph:
@@ -209,7 +163,6 @@ def test_respond_returns_draft_link(monkeypatch):
 
 def test_urgent_push_clicks_through_to_the_email(monkeypatch):
     monkeypatch.delenv("REDIRECTOR_BASE_URL", raising=False)
-    monkeypatch.setattr(urgent, "prepare", lambda msg: None)
     notified = {}
     monkeypatch.setattr(urgent.ntfy, "notify", lambda **kw: notified.update(kw))
 
@@ -288,19 +241,22 @@ def test_build_event_message_id_never_literal_none(monkeypatch):
     assert event["message_id"] == ""
 
 
+def test_build_event_seed_fields_are_none_without_extras(monkeypatch):
+    monkeypatch.delenv("REDIRECTOR_BASE_URL", raising=False)
+    ev = email_events.build_event(_msg(), _classification(), {})
+    assert ev["seed_key_points"] is None and ev["seed_links"] is None
+
+
 def test_urgent_survives_ntfy_outage(monkeypatch):
     monkeypatch.delenv("REDIRECTOR_BASE_URL", raising=False)
-    monkeypatch.setenv("WEBHOOK_URL", "https://inbox-webhook.example")
-    monkeypatch.setattr(urgent, "prepare", lambda msg: _invite())
 
     def _boom(**kwargs):
         raise RuntimeError("ntfy down")
 
     monkeypatch.setattr(urgent.ntfy, "notify", _boom)
 
-    extras = urgent.handle(_classification(Category.URGENT), _msg())
-    # A push failure must not cost the event its invite seeds.
-    assert any(p.startswith("Calendar invite: Standup") for p in extras["seed_key_points"])
+    # A push failure must not raise out of the handler — it still returns {}.
+    assert urgent.handle(_classification(Category.URGENT), _msg()) == {}
 
 
 def test_publish_records_metric_by_outcome(monkeypatch):

@@ -29,9 +29,6 @@ opentelemetry-instrumentation-logging>=0.45b0
 # HubSpot CRM
 hubspot-api-client>=10.0
 
-# Calendar invites (.ics parsing)
-icalendar>=5.0
-
 # Environment
 python-dotenv>=1.0.0
 
