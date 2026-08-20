@@ -77,6 +77,9 @@ class GraphEmailClient:
             "https://graph.microsoft.com/Mail.Read "
             "https://graph.microsoft.com/Mail.Read.Shared "
             "https://graph.microsoft.com/User.Read "
+            # Calendars.ReadWrite is NOT used by inbox. The schedule repo
+            # (github.com/bdrolet/schedule) shares this app registration +
+            # msal-token-cache and needs it for the Exchange RSVP relay. Do not remove.
             "https://graph.microsoft.com/Calendars.ReadWrite "
             "https://graph.microsoft.com/Group.Read.All",
         ).split()
@@ -785,79 +788,6 @@ class GraphEmailClient:
             raise LookupError("message not found")
         response.raise_for_status()
         return response.json().get("value", [])
-
-    def _find_event_id_by_ical_uid(self, ical_uid: str) -> str | None:
-        """Return the Graph event id matching iCalUID, or None if not found."""
-        try:
-            response = requests.get(
-                f"{self.graph_endpoint}/me/events",
-                headers=self.get_headers(),
-                params={
-                    "$filter": f"iCalUId eq '{ical_uid}'",
-                    "$select": "id,iCalUId",
-                    "$top": "1",
-                },
-            )
-            response.raise_for_status()
-            items = response.json().get("value", [])
-            return items[0]["id"] if items else None
-        except requests.exceptions.RequestException as e:
-            logger.error("_find_event_id_by_ical_uid failed for %s: %s", ical_uid, e)
-            return None
-
-    def accept_event(self, ical_uid: str) -> bool:
-        """Find event by iCalUID and POST /me/events/{id}/accept."""
-        event_id = self._find_event_id_by_ical_uid(ical_uid)
-        if not event_id:
-            logger.warning("accept_event: no event found for iCalUID %s", ical_uid)
-            return False
-        try:
-            requests.post(
-                f"{self.graph_endpoint}/me/events/{event_id}/accept",
-                headers=self.get_headers(),
-                json={"sendResponse": True},
-            ).raise_for_status()
-            logger.info("Accepted event iCalUID=%s", ical_uid)
-            return True
-        except requests.exceptions.RequestException as e:
-            logger.error("accept_event failed for iCalUID=%s: %s", ical_uid, e)
-            return False
-
-    def decline_event(self, ical_uid: str) -> bool:
-        """POST /me/events/{id}/decline."""
-        event_id = self._find_event_id_by_ical_uid(ical_uid)
-        if not event_id:
-            logger.warning("decline_event: no event found for iCalUID %s", ical_uid)
-            return False
-        try:
-            requests.post(
-                f"{self.graph_endpoint}/me/events/{event_id}/decline",
-                headers=self.get_headers(),
-                json={"sendResponse": True},
-            ).raise_for_status()
-            logger.info("Declined event iCalUID=%s", ical_uid)
-            return True
-        except requests.exceptions.RequestException as e:
-            logger.error("decline_event failed for iCalUID=%s: %s", ical_uid, e)
-            return False
-
-    def tentatively_accept_event(self, ical_uid: str) -> bool:
-        """POST /me/events/{id}/tentativelyAccept."""
-        event_id = self._find_event_id_by_ical_uid(ical_uid)
-        if not event_id:
-            logger.warning("tentatively_accept_event: no event found for iCalUID %s", ical_uid)
-            return False
-        try:
-            requests.post(
-                f"{self.graph_endpoint}/me/events/{event_id}/tentativelyAccept",
-                headers=self.get_headers(),
-                json={"sendResponse": True},
-            ).raise_for_status()
-            logger.info("Tentatively accepted event iCalUID=%s", ical_uid)
-            return True
-        except requests.exceptions.RequestException as e:
-            logger.error("tentatively_accept_event failed for iCalUID=%s: %s", ical_uid, e)
-            return False
 
     def search_emails(self, query: str, mailbox: str = "me", limit: int = 25) -> List[Email]:
         """Search a mailbox using Graph API KQL $search.
