@@ -1,7 +1,7 @@
 """
 Cloud Function: inbox webhook receiver.
 
-Handles four interactions:
+Handles five interactions:
   GET  ?validationToken=...  — subscription validation handshake (must reply in 10s)
   POST /                     — change notification; publishes each created message to Pub/Sub
   POST /label                — human feedback from ntfy action buttons; publishes to inbox-labels
