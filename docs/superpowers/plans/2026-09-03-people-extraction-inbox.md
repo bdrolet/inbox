@@ -1120,6 +1120,8 @@ Note: the `graph-subscription-id` version resource uses `var.graph_subscription_
 
 - [ ] **Step 4: `iam.tf`** — delete the `process_cf_hubspot` resource (lines 74-78). No new binding here: people's terraform grants `inbox-process-cf` on `people-api-token`.
 
+- [ ] **Step 4b: project APIs** — inbox's terraform owns the project API list (`google_project_service.apis`). Add `"people.googleapis.com"` to it: the people service's Google Contacts client needs the People API, which was enabled by hand with `gcloud services enable people.googleapis.com` during the Phase A deploy and must be codified here so a fresh project gets it. The apply is a no-op for the already-enabled API.
+
 - [ ] **Step 5: `cloud_functions.tf`**
 
 Process CF: delete the `HUBSPOT_TOKEN` `secret_environment_variables` block (lines 281-286). Add to `environment_variables`: `PEOPLE_API_URL = var.people_api_url`. Add:
