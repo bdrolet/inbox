@@ -57,3 +57,10 @@ def test_local_test_subject_skipped_in_gcp(monkeypatch, wired):
     monkeypatch.setattr(sent, "fetch", lambda mid, client: E("[LOCAL-TEST] hi"))
     sent.run({"resourceData": {"id": "g1"}})
     assert wired == []
+
+
+def test_local_test_subject_published_outside_gcp(monkeypatch, wired):
+    monkeypatch.delenv("GCP_PROJECT_ID", raising=False)
+    monkeypatch.setattr(sent, "fetch", lambda mid, client: E("[LOCAL-TEST] hi"))
+    sent.run({"resourceData": {"id": "g1"}})
+    assert len(wired) == 1 and wired[0]["subject"] == "[LOCAL-TEST] hi"
