@@ -9,12 +9,13 @@ import time
 from opentelemetry.trace import StatusCode
 
 import clients.otel as otel
+from clients import people_api
 from clients.claude import classify
 from clients.db import get_conn
 from clients.graph import get_graph_client
 from handlers.actions.dispatch import dispatch
 from models.types import Category
-from repo import classifications, messages, senders
+from repo import classifications, messages
 from repo.embeddings import retrieve_neighbors
 from services.classification import PROMPT_VERSION, aggregate_neighbors, build_prompt
 from services.embedding import embed_and_store, text_for_embedding
@@ -71,8 +72,7 @@ def run(notification: dict, model, context=None) -> None:
                 msg["id"] = (
                     msg_id  # make DB UUID available to action handlers (ntfy action buttons)
                 )
-                senders.upsert(conn, msg["sender"], msg["source"])
-                sender_ctx = senders.get(conn, msg["sender"], msg["source"])
+                sender_ctx = people_api.get_person(msg["sender"])  # None → no sender context
 
                 # Embed
                 t0 = time.monotonic()

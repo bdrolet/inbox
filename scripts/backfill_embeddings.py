@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 from clients.azure.graph_email_client import GraphEmailClient
 from clients.bge import load_model
 from clients.db import get_conn
-from repo import messages, senders
+from repo import messages
 from services.embedding import embed_and_store, text_for_embedding
 from services.ingestion import normalize
 
@@ -112,7 +112,6 @@ def main():
                     continue
 
                 msg_id = messages.insert(conn, msg)
-                senders.upsert(conn, msg["sender"], msg["source"])
                 embed_and_store(conn, msg_id, text_for_embedding(msg), model)
                 conn.commit()
 
