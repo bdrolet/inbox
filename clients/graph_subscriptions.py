@@ -27,16 +27,23 @@ def _expiry() -> str:
     return dt.strftime("%Y-%m-%dT%H:%M:%S.0000000Z")
 
 
-def register(client, notification_url: str) -> dict:
-    """Create a new subscription. Returns the subscription dict (contains 'id')."""
+def register(
+    client,
+    notification_url: str,
+    *,
+    resource: str = "me/mailFolders/inbox/messages",
+    client_state: str | None = None,
+) -> dict:
+    """Create a subscription (immutable IDs). resource/client_state default to
+    the Inbox subscription; pass the Sent Items pair for the second one."""
     resp = requests.post(
         "https://graph.microsoft.com/v1.0/subscriptions",
         json={
             "changeType": "created",
             "notificationUrl": notification_url,
-            "resource": "me/mailFolders/inbox/messages",
+            "resource": resource,
             "expirationDateTime": _expiry(),
-            "clientState": os.environ.get("WEBHOOK_CLIENT_STATE", "inbox-webhook"),
+            "clientState": client_state or os.environ.get("WEBHOOK_CLIENT_STATE", "inbox-webhook"),
         },
         headers=client.get_headers(immutable=True),
     )

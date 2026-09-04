@@ -1,18 +1,20 @@
 """
 Cloud Function: Graph subscription renewal (self-healing).
 
-Triggered by Cloud Scheduler every 2 days. Renews the inbox-messages Graph
-subscription before it expires (max lifetime: 4,230 minutes ~= 3 days). If the
-subscription has already expired (Graph returns 404), or no ID is stored yet,
-it registers a fresh subscription and writes the new ID back to Secret Manager
-so the next run renews the replacement.
+Triggered by Cloud Scheduler every 2 days. Renews the Inbox and Sent Items
+Graph subscriptions before they expire (max lifetime: 4,230 minutes ~= 3 days).
+If a subscription has already expired (Graph returns 404), or no ID is stored
+yet, it registers a fresh subscription and writes the new ID back to Secret
+Manager so the next run renews the replacement.
 
 Required env vars:
-  GCP_PROJECT_ID           - GCP project (Secret Manager access)
-  WEBHOOK_URL              - webhook CF URL to register new subscriptions against
-  MSAL_SECRET_NAME         - optional; defaults to msal-token-cache
-  SUBSCRIPTION_SECRET_NAME - optional; defaults to graph-subscription-id
-  WEBHOOK_CLIENT_STATE     - optional; defaults to inbox-webhook (must match webhook CF)
+  GCP_PROJECT_ID                - GCP project (Secret Manager access)
+  WEBHOOK_URL                   - webhook CF URL to register new subscriptions against
+  MSAL_SECRET_NAME              - optional; defaults to msal-token-cache
+  SUBSCRIPTION_SECRET_NAME      - optional; defaults to graph-subscription-id (Inbox)
+  SENT_SUBSCRIPTION_SECRET_NAME - optional; defaults to graph-sent-subscription-id (Sent Items)
+  WEBHOOK_CLIENT_STATE          - optional; defaults to inbox-webhook (must match webhook CF)
+  WEBHOOK_CLIENT_STATE_SENT     - optional; defaults to inbox-webhook-sent (must match webhook CF)
 """
 
 import json
@@ -50,22 +52,39 @@ def _save_msal_token(serialized: str) -> None:
     client.add_secret_version(request={"parent": parent, "payload": {"data": serialized.encode()}})
 
 
-def _load_subscription_id() -> str:
+def _subscriptions() -> list[dict]:
+    """The Graph subscriptions this function keeps alive. Order matters only
+    for logging. Env names match the webhook CF's."""
+    return [
+        {
+            "resource": "me/mailFolders/inbox/messages",
+            "client_state": os.environ.get("WEBHOOK_CLIENT_STATE", "inbox-webhook"),
+            "secret_name": os.environ.get("SUBSCRIPTION_SECRET_NAME", "graph-subscription-id"),
+        },
+        {
+            "resource": "me/mailFolders/sentitems/messages",
+            "client_state": os.environ.get("WEBHOOK_CLIENT_STATE_SENT", "inbox-webhook-sent"),
+            "secret_name": os.environ.get(
+                "SENT_SUBSCRIPTION_SECRET_NAME", "graph-sent-subscription-id"
+            ),
+        },
+    ]
+
+
+def _load_subscription_id(sub: dict) -> str:
     project_id = os.environ["GCP_PROJECT_ID"]
-    secret_name = os.environ.get("SUBSCRIPTION_SECRET_NAME", "graph-subscription-id")
     client = secretmanager.SecretManagerServiceClient()
-    name = f"projects/{project_id}/secrets/{secret_name}/versions/latest"
+    name = f"projects/{project_id}/secrets/{sub['secret_name']}/versions/latest"
     try:
         return client.access_secret_version(request={"name": name}).payload.data.decode().strip()
     except gcp_exceptions.NotFound:
         return ""  # no version yet -> bootstrap path registers a fresh subscription
 
 
-def _save_subscription_id(subscription_id: str) -> None:
+def _save_subscription_id(sub: dict, subscription_id: str) -> None:
     project_id = os.environ["GCP_PROJECT_ID"]
-    secret_name = os.environ.get("SUBSCRIPTION_SECRET_NAME", "graph-subscription-id")
     client = secretmanager.SecretManagerServiceClient()
-    parent = f"projects/{project_id}/secrets/{secret_name}"
+    parent = f"projects/{project_id}/secrets/{sub['secret_name']}"
     client.add_secret_version(
         request={"parent": parent, "payload": {"data": subscription_id.encode()}}
     )
@@ -125,17 +144,17 @@ def _list_subscriptions(token: str) -> list:
     return resp.json().get("value", [])
 
 
-def _create_subscription(token: str) -> dict:
+def _create_subscription(sub: dict, token: str) -> dict:
     resp = requests.post(
         "https://graph.microsoft.com/v1.0/subscriptions",
         json={
             "changeType": "created",
             "notificationUrl": os.environ["WEBHOOK_URL"],
-            "resource": "me/mailFolders/inbox/messages",
+            "resource": sub["resource"],
             "expirationDateTime": _expiry(),
-            "clientState": os.environ.get("WEBHOOK_CLIENT_STATE", "inbox-webhook"),
+            "clientState": sub["client_state"],
         },
-        headers={"Authorization": f"Bearer {token}"},
+        headers={"Authorization": f"Bearer {token}", "Prefer": 'IdType="ImmutableId"'},
     )
     if not resp.ok:
         logger.error("Graph POST /subscriptions returned %d: %s", resp.status_code, resp.text)
@@ -143,49 +162,42 @@ def _create_subscription(token: str) -> dict:
     return resp.json()
 
 
-def _register_subscription(token: str) -> dict:
+def _register_subscription(sub: dict, token: str) -> dict:
     """Idempotent: reuse an existing subscription for our webhook+resource if one
     exists (e.g. a prior run registered but failed to persist the ID), else create
     a new one. Prevents orphaned duplicates from accumulating on partial failures."""
     webhook_url = os.environ["WEBHOOK_URL"]
-    resource = "me/mailFolders/inbox/messages"
-    for sub in _list_subscriptions(token):
-        if sub.get("notificationUrl") == webhook_url and sub.get("resource") == resource:
-            logger.info("Reusing existing subscription %s for %s", sub["id"], webhook_url)
-            return sub
-    return _create_subscription(token)
+    for existing in _list_subscriptions(token):
+        if (
+            existing.get("notificationUrl") == webhook_url
+            and existing.get("resource") == sub["resource"]
+        ):
+            logger.info("Reusing existing subscription %s for %s", existing["id"], sub["resource"])
+            return existing
+    return _create_subscription(sub, token)
 
 
-def _renew_or_register(subscription_id: str, token: str) -> dict:
+def _renew_or_register(sub: dict, subscription_id: str, token: str) -> dict:
     if not subscription_id:
-        logger.warning("No subscription ID on file -- registering a new subscription")
-        sub = _register_subscription(token)
-        _save_subscription_id(sub["id"])
-        logger.info(
-            "Registered subscription %s (expires %s)", sub["id"], sub.get("expirationDateTime")
-        )
-        return sub
-
+        logger.warning("No subscription ID on file for %s -- registering", sub["resource"])
+        created = _register_subscription(sub, token)
+        _save_subscription_id(sub, created["id"])
+        return created
     resp = _patch_subscription(subscription_id, token)
     if resp.status_code == 404:
-        logger.warning(
-            "Subscription %s not found (404) -- registering a replacement", subscription_id
-        )
-        sub = _register_subscription(token)
-        _save_subscription_id(sub["id"])
-        logger.info(
-            "Registered replacement subscription %s (expires %s)",
-            sub["id"],
-            sub.get("expirationDateTime"),
-        )
-        return sub
+        logger.warning("Subscription %s not found -- registering a replacement", subscription_id)
+        created = _register_subscription(sub, token)
+        _save_subscription_id(sub, created["id"])
+        return created
     if not resp.ok:
         logger.error("Graph PATCH %s returned %d: %s", subscription_id, resp.status_code, resp.text)
         resp.raise_for_status()
-
     body = resp.json()
     logger.info(
-        "Renewed subscription %s -- new expiry: %s", subscription_id, body.get("expirationDateTime")
+        "Renewed %s (%s) -- expiry %s",
+        subscription_id,
+        sub["resource"],
+        body.get("expirationDateTime"),
     )
     return body
 
@@ -193,6 +205,7 @@ def _renew_or_register(subscription_id: str, token: str) -> dict:
 @functions_framework.http
 def renew(request):
     token = _get_access_token()
-    subscription_id = _load_subscription_id()
-    sub = _renew_or_register(subscription_id, token)
-    return json.dumps(sub), 200, {"Content-Type": "application/json"}
+    results = [
+        _renew_or_register(sub, _load_subscription_id(sub), token) for sub in _subscriptions()
+    ]
+    return json.dumps(results), 200, {"Content-Type": "application/json"}
