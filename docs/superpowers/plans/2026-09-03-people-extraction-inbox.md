@@ -1184,6 +1184,8 @@ git commit -m "infra: drop hubspot-token wiring; add people-api token + Sent Ite
 
 - [ ] **Step 2: `docs/inbox-architecture.md`** — remove `repo/senders.py` from the layer diagram (line 104), the `senders` entries (135, 198, 222, 448, 498), and the "Sender context" pipeline stage text (replace with one sentence: sender context comes from `people-api`). Add the Sent Items subscription to the trigger section (~line 166).
 
+- [ ] **Step 2b: Point the people skills at the custom domain** — `people-api.drolet.cloud` is mapped (people PR #2, infra PR #8). In `~/src/people/.claude/skills/{searching-people,fetching-person,editing-person}/SKILL.md` (the global copies under `~/.claude/skills/` are symlinks to these) replace the `terraform output -raw people_api_url` base-URL step with `BASE=https://people-api.drolet.cloud`, keeping the token step. Commit in the people repo via its own `/pr-open` (one PR, three files).
+
 - [ ] **Step 3: Check the global skill**
 
 ```bash
