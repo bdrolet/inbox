@@ -14,7 +14,7 @@ request/cancel/response messages, which carry no `.ics` attachment.
 """
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 
 import clients.otel as otel
 from clients import pubsub
@@ -78,4 +78,29 @@ def build_event(msg: Message, classification: Classification, extras: dict | Non
         # #microsoft.graph.eventMessage*) — no .ics attachment, so schedule
         # needs this hint to detect the meeting without relying on has_attachments.
         "is_meeting_message": bool(msg.get("is_meeting_message", False)),
+    }
+
+
+def email_sent_payload(email) -> dict:
+    """email_sent: recipients + timestamp only (spec §10.3). No body, no inbox
+    UUID (sent mail is never stored). Bcc deliberately excluded. Consumed by
+    the people repo (github.com/bdrolet/people) for my_response_count."""
+    sent = getattr(email, "sent_datetime", None)
+    if isinstance(sent, datetime):
+        sent_at = sent.isoformat()
+    else:
+        sent_at = datetime.now(timezone.utc).isoformat()
+
+    def _addrs(recipients) -> list[str]:
+        return [r["address"].strip().lower() for r in (recipients or []) if r.get("address")]
+
+    return {
+        "event": "email_sent",
+        "graph_message_id": email.id or "",
+        "conversation_id": getattr(email, "conversation_id", None),
+        "sent_at": sent_at,
+        "from": (email.from_email or "").lower(),
+        "to": _addrs(email.to_recipients),
+        "cc": _addrs(email.cc_recipients),
+        "subject": email.subject or "",
     }

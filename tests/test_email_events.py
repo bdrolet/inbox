@@ -282,3 +282,28 @@ def test_publish_records_metric_by_outcome(monkeypatch):
         (1, {"event": "email_classified", "outcome": "ok"}),
         (1, {"event": "label_applied", "outcome": "error"}),
     ]
+
+
+def test_email_sent_payload_shape():
+    class E:
+        id = "AAMk-immutable"
+        conversation_id = "AAQk-conv"
+        sent_datetime = datetime(2026, 9, 3, 14, 5, tzinfo=UTC)
+        from_email = "ben@drolet.cloud"
+        to_recipients = [{"address": "Alice@Example.com", "name": "Alice"}, {"name": "no address"}]
+        cc_recipients = [{"address": "carol@example.com"}]
+        bcc_recipients = [{"address": "hidden@example.com"}]
+        subject = "Re: hello"
+
+    p = email_events.email_sent_payload(E())
+    assert p == {
+        "event": "email_sent",
+        "graph_message_id": "AAMk-immutable",
+        "conversation_id": "AAQk-conv",
+        "sent_at": "2026-09-03T14:05:00+00:00",
+        "from": "ben@drolet.cloud",
+        "to": ["alice@example.com"],
+        "cc": ["carol@example.com"],
+        "subject": "Re: hello",
+    }
+    assert "body" not in p and "hidden@example.com" not in str(p)
