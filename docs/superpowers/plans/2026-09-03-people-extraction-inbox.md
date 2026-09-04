@@ -96,20 +96,19 @@ git rm clients/hubspot.py scripts/import_contacts.py .claude/skills/importing-hu
 Remove line 11 `import clients.hubspot as hubspot`. Remove the whole block:
 
 ```python
-            try:
-                contact_id = hubspot.upsert_contact(msg["sender"], msg["sender_display"])
-                if contact_id:
-                    hubspot.log_email(
-                        contact_id,
-                        msg["subject"],
-                        msg["sender"],
-                        msg["body"],
-                        msg["received_at"],
-                        body_html=msg.get("body_html"),
-                    )
-            except Exception:
-                logger.warning("HubSpot logging failed", exc_info=True)
-
+try:
+    contact_id = hubspot.upsert_contact(msg["sender"], msg["sender_display"])
+    if contact_id:
+        hubspot.log_email(
+            contact_id,
+            msg["subject"],
+            msg["sender"],
+            msg["body"],
+            msg["received_at"],
+            body_html=msg.get("body_html"),
+        )
+except Exception:
+    logger.warning("HubSpot logging failed", exc_info=True)
 ```
 
 - [ ] **Step 3: Edit `requirements.txt`** — delete the two lines `# HubSpot CRM` and `hubspot-api-client>=10.0`.
@@ -176,11 +175,26 @@ def test_hit_returns_the_four_keys(monkeypatch, env):
 
     def fake_get(url, headers, timeout):
         seen.update(url=url, headers=headers, timeout=timeout)
-        return Resp(200, {"email": "a@x.com", "message_count": 3, "my_response_count": 1, "relationship_label": "family", "notes": None, "eligible": True})
+        return Resp(
+            200,
+            {
+                "email": "a@x.com",
+                "message_count": 3,
+                "my_response_count": 1,
+                "relationship_label": "family",
+                "notes": None,
+                "eligible": True,
+            },
+        )
 
     monkeypatch.setattr(people_api.requests, "get", fake_get)
     out = people_api.get_person("A@X.com")
-    assert out == {"message_count": 3, "my_response_count": 1, "relationship_label": "family", "notes": None}
+    assert out == {
+        "message_count": 3,
+        "my_response_count": 1,
+        "relationship_label": "family",
+        "notes": None,
+    }
     assert seen["url"] == "https://people.example/people/a@x.com"
     assert seen["headers"] == {"Authorization": "Bearer t0k"} and seen["timeout"] == 2
 
@@ -313,6 +327,7 @@ git commit -m "feat: fail-open people-api client for sender context"
 ```python
 # tests/test_pipeline_people_ctx.py
 """The pipeline asks people-api for sender context and tolerates None."""
+
 import importlib
 
 import pytest
@@ -550,7 +565,11 @@ def run(notification: dict, context=None) -> None:
         email_events.publish(payload)
         otel.emails_sent_published.add(1)
         otel.stage_duration.record((time.monotonic() - t0) * 1000, {"stage": "sent"})
-        logger.info("Published email_sent %s → %d recipients", message_id, len(payload["to"]) + len(payload["cc"]))
+        logger.info(
+            "Published email_sent %s → %d recipients",
+            message_id,
+            len(payload["to"]) + len(payload["cc"]),
+        )
 ```
 
 - [ ] **Step 4: Run tests** — pass.
@@ -590,7 +609,14 @@ import main  # noqa: E402
 
 class CE:
     def __init__(self, attrs):
-        self.data = {"message": {"data": base64.b64encode(json.dumps({"resourceData": {"id": "x"}}).encode()).decode(), "attributes": attrs}}
+        self.data = {
+            "message": {
+                "data": base64.b64encode(
+                    json.dumps({"resourceData": {"id": "x"}}).encode()
+                ).decode(),
+                "attributes": attrs,
+            }
+        }
 
 
 @pytest.fixture
@@ -790,30 +816,26 @@ with
 and replace
 
 ```python
-                if notification.get("clientState") != client_state:
-                    logger.warning("Unexpected clientState: %s", notification.get("clientState"))
-                    continue
+if notification.get("clientState") != client_state:
+    logger.warning("Unexpected clientState: %s", notification.get("clientState"))
+    continue
 
-                carrier = {}
-                inject(carrier)
-                futures.append(
-                    publisher.publish(messages_topic, json.dumps(notification).encode(), **carrier)
-                )
+carrier = {}
+inject(carrier)
+futures.append(publisher.publish(messages_topic, json.dumps(notification).encode(), **carrier))
 ```
 
 with
 
 ```python
-                folder = folder_by_state.get(notification.get("clientState", ""))
-                if folder is None:
-                    logger.warning("Unexpected clientState: %s", notification.get("clientState"))
-                    continue
+folder = folder_by_state.get(notification.get("clientState", ""))
+if folder is None:
+    logger.warning("Unexpected clientState: %s", notification.get("clientState"))
+    continue
 
-                carrier = {"folder": folder}
-                inject(carrier)
-                futures.append(
-                    publisher.publish(messages_topic, json.dumps(notification).encode(), **carrier)
-                )
+carrier = {"folder": folder}
+inject(carrier)
+futures.append(publisher.publish(messages_topic, json.dumps(notification).encode(), **carrier))
 ```
 
 Update the module docstring's `POST /` line to: `— change notification (Inbox or Sent Items subscription, by clientState); publishes each created message to Pub/Sub with a folder attribute`.
@@ -843,8 +865,16 @@ git commit -m "feat: webhook accepts the Sent Items subscription and stamps a fo
 In `tests/test_renew.py`, define at the top (after module load):
 
 ```python
-INBOX = {"resource": "me/mailFolders/inbox/messages", "client_state": "inbox-webhook", "secret_name": "graph-subscription-id"}
-SENT = {"resource": "me/mailFolders/sentitems/messages", "client_state": "inbox-webhook-sent", "secret_name": "graph-sent-subscription-id"}
+INBOX = {
+    "resource": "me/mailFolders/inbox/messages",
+    "client_state": "inbox-webhook",
+    "secret_name": "graph-subscription-id",
+}
+SENT = {
+    "resource": "me/mailFolders/sentitems/messages",
+    "client_state": "inbox-webhook-sent",
+    "secret_name": "graph-sent-subscription-id",
+}
 ```
 
 Then: every `_patch_subscription` lambda keeps `(sid, tok)`; `_register_subscription` lambdas become `lambda sub, tok: ...`; `_save_subscription_id` lambdas become `lambda sub, sid: ...`; every `_renew_or_register("...", "tok")` call becomes `_renew_or_register(INBOX, "...", "tok")`; `_register_subscription("tok")` becomes `_register_subscription(INBOX, "tok")`; `_create_subscription` monkeypatch becomes `lambda sub, tok: ...`. Add:
@@ -852,9 +882,15 @@ Then: every `_patch_subscription` lambda keeps `(sid, tok)`; `_register_subscrip
 ```python
 def test_register_matches_on_resource_not_just_url(monkeypatch):
     monkeypatch.setenv("WEBHOOK_URL", "https://webhook.example.com")
-    inbox_sub = {"id": "sub-inbox", "notificationUrl": "https://webhook.example.com", "resource": INBOX["resource"]}
+    inbox_sub = {
+        "id": "sub-inbox",
+        "notificationUrl": "https://webhook.example.com",
+        "resource": INBOX["resource"],
+    }
     monkeypatch.setattr(renew_main, "_list_subscriptions", lambda tok: [inbox_sub])
-    monkeypatch.setattr(renew_main, "_create_subscription", lambda sub, tok: {"id": "sub-created", **sub})
+    monkeypatch.setattr(
+        renew_main, "_create_subscription", lambda sub, tok: {"id": "sub-created", **sub}
+    )
     assert renew_main._register_subscription(SENT, "tok")["id"] == "sub-created"
 
 
@@ -865,15 +901,24 @@ def test_subscriptions_from_env(monkeypatch):
     monkeypatch.setenv("WEBHOOK_CLIENT_STATE_SENT", "inbox-webhook-sent")
     subs = renew_main._subscriptions()
     assert [s["resource"] for s in subs] == [INBOX["resource"], SENT["resource"]]
-    assert subs[1]["client_state"] == "inbox-webhook-sent" and subs[1]["secret_name"] == "graph-sent-subscription-id"
+    assert (
+        subs[1]["client_state"] == "inbox-webhook-sent"
+        and subs[1]["secret_name"] == "graph-sent-subscription-id"
+    )
 
 
 def test_renew_handles_each_subscription(monkeypatch):
     seen = []
     monkeypatch.setattr(renew_main, "_get_access_token", lambda: "tok")
     monkeypatch.setattr(renew_main, "_subscriptions", lambda: [INBOX, SENT])
-    monkeypatch.setattr(renew_main, "_load_subscription_id", lambda sub: "id-" + sub["client_state"])
-    monkeypatch.setattr(renew_main, "_renew_or_register", lambda sub, sid, tok: seen.append((sub["resource"], sid)) or {"id": sid})
+    monkeypatch.setattr(
+        renew_main, "_load_subscription_id", lambda sub: "id-" + sub["client_state"]
+    )
+    monkeypatch.setattr(
+        renew_main,
+        "_renew_or_register",
+        lambda sub, sid, tok: seen.append((sub["resource"], sid)) or {"id": sid},
+    )
     body, status, _ = renew_main.renew(None)
     assert status == 200 and len(seen) == 2
 ```
@@ -901,7 +946,10 @@ def test_register_default_is_inbox(monkeypatch):
     monkeypatch.setattr(gs.requests, "post", lambda url, json, headers: seen.update(json) or R())
     monkeypatch.setenv("WEBHOOK_CLIENT_STATE", "inbox-webhook")
     gs.register(C(), "https://w")
-    assert seen["resource"] == "me/mailFolders/inbox/messages" and seen["clientState"] == "inbox-webhook"
+    assert (
+        seen["resource"] == "me/mailFolders/inbox/messages"
+        and seen["clientState"] == "inbox-webhook"
+    )
 
 
 def test_register_sent(monkeypatch):
@@ -915,8 +963,16 @@ def test_register_sent(monkeypatch):
             return {"id": "s"}
 
     monkeypatch.setattr(gs.requests, "post", lambda url, json, headers: seen.update(json) or R())
-    gs.register(C(), "https://w", resource="me/mailFolders/sentitems/messages", client_state="inbox-webhook-sent")
-    assert seen["resource"] == "me/mailFolders/sentitems/messages" and seen["clientState"] == "inbox-webhook-sent"
+    gs.register(
+        C(),
+        "https://w",
+        resource="me/mailFolders/sentitems/messages",
+        client_state="inbox-webhook-sent",
+    )
+    assert (
+        seen["resource"] == "me/mailFolders/sentitems/messages"
+        and seen["clientState"] == "inbox-webhook-sent"
+    )
 ```
 
 - [ ] **Step 2: Run to verify failure** — `.venv/bin/pytest tests/test_renew.py tests/test_graph_subscriptions_register.py -q` — Expected: `TypeError`s / `AttributeError: _subscriptions`.
@@ -938,7 +994,9 @@ def _subscriptions() -> list[dict]:
         {
             "resource": "me/mailFolders/sentitems/messages",
             "client_state": os.environ.get("WEBHOOK_CLIENT_STATE_SENT", "inbox-webhook-sent"),
-            "secret_name": os.environ.get("SENT_SUBSCRIPTION_SECRET_NAME", "graph-sent-subscription-id"),
+            "secret_name": os.environ.get(
+                "SENT_SUBSCRIPTION_SECRET_NAME", "graph-sent-subscription-id"
+            ),
         },
     ]
 
@@ -957,7 +1015,9 @@ def _save_subscription_id(sub: dict, subscription_id: str) -> None:
     project_id = os.environ["GCP_PROJECT_ID"]
     client = secretmanager.SecretManagerServiceClient()
     parent = f"projects/{project_id}/secrets/{sub['secret_name']}"
-    client.add_secret_version(request={"parent": parent, "payload": {"data": subscription_id.encode()}})
+    client.add_secret_version(
+        request={"parent": parent, "payload": {"data": subscription_id.encode()}}
+    )
 
 
 def _create_subscription(sub: dict, token: str) -> dict:
@@ -981,7 +1041,10 @@ def _create_subscription(sub: dict, token: str) -> dict:
 def _register_subscription(sub: dict, token: str) -> dict:
     webhook_url = os.environ["WEBHOOK_URL"]
     for existing in _list_subscriptions(token):
-        if existing.get("notificationUrl") == webhook_url and existing.get("resource") == sub["resource"]:
+        if (
+            existing.get("notificationUrl") == webhook_url
+            and existing.get("resource") == sub["resource"]
+        ):
             logger.info("Reusing existing subscription %s for %s", existing["id"], sub["resource"])
             return existing
     return _create_subscription(sub, token)
@@ -1003,14 +1066,21 @@ def _renew_or_register(sub: dict, subscription_id: str, token: str) -> dict:
         logger.error("Graph PATCH %s returned %d: %s", subscription_id, resp.status_code, resp.text)
         resp.raise_for_status()
     body = resp.json()
-    logger.info("Renewed %s (%s) -- expiry %s", subscription_id, sub["resource"], body.get("expirationDateTime"))
+    logger.info(
+        "Renewed %s (%s) -- expiry %s",
+        subscription_id,
+        sub["resource"],
+        body.get("expirationDateTime"),
+    )
     return body
 
 
 @functions_framework.http
 def renew(request):
     token = _get_access_token()
-    results = [_renew_or_register(sub, _load_subscription_id(sub), token) for sub in _subscriptions()]
+    results = [
+        _renew_or_register(sub, _load_subscription_id(sub), token) for sub in _subscriptions()
+    ]
     return json.dumps(results), 200, {"Content-Type": "application/json"}
 ```
 
