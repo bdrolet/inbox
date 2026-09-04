@@ -58,20 +58,34 @@ def _get_model():
     return _model
 
 
+def _run_pipeline(notification, model, context=None):
+    from handlers.pipeline import run
+
+    run(notification, model, context=context)
+
+
+def _run_sent(notification, context=None):
+    from handlers.sent import run
+
+    run(notification, context=context)
+
+
 @functions_framework.cloud_event
 def process(cloud_event: CloudEvent) -> None:
-    from handlers.pipeline import run as run_pipeline
-
     data = base64.b64decode(cloud_event.data["message"]["data"]).decode()
     notification = json.loads(data)
     attrs = cloud_event.data["message"].get("attributes", {})
     ctx = extract(attrs)
+    folder = attrs.get("folder", "inbox")  # missing → inbox: in-flight messages during deploy
     # Flush before processing to export a cumulative baseline. Without this,
     # cold-start invocations produce a single OTLP data point (counter=1) and
     # Prometheus increase() requires ≥2 samples to show a non-zero result.
     otel.flush()
     try:
-        run_pipeline(notification, _get_model(), context=ctx)
+        if folder == "sentitems":
+            _run_sent(notification, context=ctx)
+        else:
+            _run_pipeline(notification, _get_model(), context=ctx)
     finally:
         otel.flush()
 
