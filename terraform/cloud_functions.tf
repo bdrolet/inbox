@@ -182,6 +182,27 @@ data "archive_file" "process_source" {
     ".dockerignore",
     ".token_cache.json",
     ".env",
+    # Scratch/caches that live under the repo root but must never change the
+    # source hash (archive_file scans the filesystem, not git): SDD workspace,
+    # bytecode, tool caches. Same list as tasks' cloud_functions.tf.
+    ".superpowers",
+    "__pycache__",
+    "clients/__pycache__",
+    "clients/azure/__pycache__",
+    "services/__pycache__",
+    "handlers/__pycache__",
+    "handlers/actions/__pycache__",
+    "models/__pycache__",
+    "repo/__pycache__",
+    "api/__pycache__",
+    "api/routers/__pycache__",
+    "tests/__pycache__",
+    ".pytest_cache",
+    ".mypy_cache",
+    ".ruff_cache",
+    # google-github-actions/auth writes its WIF credentials file into the job
+    # working directory (this repo root, in CI) — never ship it in the zip.
+    "gha-creds-*.json",
   ]
 }
 
