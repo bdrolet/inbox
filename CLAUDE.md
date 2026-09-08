@@ -14,6 +14,8 @@ See `docs/inbox-architecture.md` for the full design and `docs/v1-implementation
 
 **Calendar ownership (schedule v1.1, shipped):** inbox owns mail only — classification, tagging, and the `email_classified` feed. The separate `schedule` repo (github.com/bdrolet/schedule) owns *everything* calendar: it reads `.ics` attachments via Graph using the event's `graph_message_id`/`has_attachments` (and `is_meeting_message` for Exchange-native meeting requests, which carry no `.ics`), mirrors invites into Google Calendar by iCalendar UID, and writes Ben's RSVPs back to his Exchange calendar via Graph (`/me/events/{id}/accept|decline|tentativelyAccept`) — sharing this repo's Azure app + `msal-token-cache` (schedule's SAs have accessor + versionManager on it). Inbox has no calendar code, no `calendar_invites` table, no `/calendar` webhook route and no `inbox-calendar` topic. Do not add calendar logic here again. See schedule's `docs/superpowers/specs/2026-08-17-invite-mirroring-rsvp-relay-design.md`.
 
+**People ownership (shipped):** inbox owns mail only. The separate `people` repo (github.com/bdrolet/people) owns everyone Ben corresponds with — Google Contacts (source of truth), a derived `people` index, a HubSpot mirror capped at 1000 most-recent contacts, and `people-api`. Inbox publishes `email_classified` (unchanged) and a new `email_sent` event from a second Graph subscription on Sent Items (`clientState` `inbox-webhook-sent`, secret `graph-sent-subscription-id`); the webhook stamps a `folder` Pub/Sub attribute and `main.py::process` routes `sentitems` to `handlers/sent.py`, which publishes and stores nothing. At classify time the pipeline fetches sender context from `people-api` (`clients/people_api.py`, 2 s timeout, fail-open). The `senders` table and HubSpot client are gone. Do not add contact or HubSpot logic here again. See `docs/superpowers/specs/2026-09-03-people-service-extraction-design.md`.
+
 **Inbox grooming (shipped):** the 5 AM sweep also grooms what it can't file. Urgent messages older than 3 days are re-triaged by Claude using the message content and the text of Ben's latest reply in the thread (if any): `still_urgent` re-holds them via a `keep_until:+3d` tag (re-checked every 3 days), `needs_response` demotes them to `respond`/`reply_required`, `resolved_or_expired` archives them. Verdicts are policy, never human feedback — they don't touch `current_label`. Untagged Inbox mail older than 24 h is republished (≤50/night) to the `inbox-messages` topic for normal classification; the processor repairs missing tags on duplicate notifications, so republishing is a safe universal repair. See `docs/superpowers/specs/2026-07-17-inbox-grooming-design.md`.
 
 **Phase 5 remainder:** the old Cloud Run Job is already decommissioned (`docs/v1-implementation.md`); what's left is seeding the vector store with human-confirmed labels — an interactive `scripts/bootstrap_labels.py` session driven by Ben.
@@ -40,7 +42,7 @@ This overrides the default "commit or push only when asked" behavior for code ch
 | **Email source** | Microsoft Graph API (Outlook/Office 365), MSAL auth |
 | **LLM** | Claude Sonnet via Anthropic API |
 | **Trigger** | Graph change notifications → webhook CF → Pub/Sub → processor CF |
-| **Domain events** | Pub/Sub topic `email-events` (inbox-owned) — `email_classified` + `label_applied` events; consumed by the separate `tasks` repo (github.com/bdrolet/tasks), which owns Asana, and the `schedule` repo (github.com/bdrolet/schedule), which owns Google Calendar |
+| **Domain events** | Pub/Sub topic `email-events` (inbox-owned) — `email_classified` + `label_applied` + `email_sent` events; consumed by the separate `tasks` repo (github.com/bdrolet/tasks), which owns Asana, the `schedule` repo (github.com/bdrolet/schedule), which owns Google Calendar, and the `people` repo (github.com/bdrolet/people), which owns contacts |
 | **Notifications** | Self-hosted ntfy at `ntfy.drolet.ai`, topic `inbox` |
 | **GCP infra** | `terraform/` (Cloud Functions, Pub/Sub, Cloud SQL, Scheduler, Secrets, IAM) |
 
@@ -49,9 +51,10 @@ This overrides the default "commit or push only when asked" behavior for code ch
 ```
 clients/          External connections (Graph API, DB, Claude, bge model, ntfy)
 models/           Shared types — Message TypedDict, Category enum (no logic)
-repo/             Database read/write (messages, classifications, embeddings, senders, tags)
+repo/             Database read/write (messages, classifications, embeddings, tags)
 services/         Business logic — one concern per file
 handlers/         Multi-service orchestration (pipeline, per-category actions)
+  sent.py         Handles Sent Items notifications — publishes email_sent, stores nothing
 functions/        Cloud Function entry points (standalone, minimal deps)
   webhook/        Receives Graph notifications → publishes to Pub/Sub
   renew/          Renews Graph subscription every 2 days
@@ -81,7 +84,7 @@ Cloud SQL Postgres 16 + pgvector. Connection name: `bens-project-462804:us-centr
 
 **Locally**: set `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` and leave `CLOUD_SQL_CONNECTION_NAME` unset — `clients/db.py` falls back to direct psycopg connect.
 
-Schema: `repo/schema.sql`. Five tables: `messages`, `message_embeddings`, `classifications`, `senders`, `tags`.
+Schema: `repo/schema.sql`. Four tables: `messages`, `message_embeddings`, `classifications`, `tags`.
 
 Key invariant: **`message_embeddings.current_label` is only set by human feedback** (`human_confirmation` or `human_correction`). LLM-assigned labels never go into this column.
 
@@ -95,13 +98,13 @@ Headless mode is triggered by the presence of `GCP_PROJECT_ID` env var. The proc
 
 ## Graph subscription
 
-The Graph change-notification subscription points at the webhook Cloud Function URL. It expires every ~3 days and is renewed automatically by the `inbox-renew` Cloud Function via Cloud Scheduler. It is registered with `Prefer: IdType="ImmutableId"`, so `resourceData.id` in notifications is an **immutable** Graph ID (stable across folder moves).
+There are two Graph change-notification subscriptions, both pointed at the webhook Cloud Function URL: one on the Inbox (`clientState` `inbox-webhook`) and one on Sent Items (`clientState` `inbox-webhook-sent`, resource `me/mailFolders/sentitems/messages`) that feeds the `email_sent` event. Both expire every ~3 days and are renewed automatically by the `inbox-renew` Cloud Function via Cloud Scheduler. Both are registered with `Prefer: IdType="ImmutableId"`, so `resourceData.id` in notifications is an **immutable** Graph ID (stable across folder moves).
 
 Webhook CF URL: `https://inbox-webhook-aizbgjlava-uc.a.run.app`
 
-Active subscription ID: `a250d513-059e-4624-9121-7dca3954c4c9`. **The authoritative value is the `graph-subscription-id` Secret Manager secret**, which the `inbox-renew` CF reads, renews every 2 days, and rewrites on self-heal — Terraform seeds it once but never overwrites it (`lifecycle.ignore_changes` in `terraform/secrets.tf`). The `terraform.tfvars` / GitHub Actions `GRAPH_SUBSCRIPTION_ID` values only matter for the initial seed of a fresh secret; keep them roughly in sync for disaster recovery.
+Active subscription ID: `a250d513-059e-4624-9121-7dca3954c4c9`. **The authoritative values are the `graph-subscription-id` (Inbox) and `graph-sent-subscription-id` (Sent Items) Secret Manager secrets**, which the `inbox-renew` CF reads, renews every 2 days, and rewrites on self-heal — Terraform seeds them once but never overwrites them (`lifecycle.ignore_changes` in `terraform/secrets.tf`). The `terraform.tfvars` / GitHub Actions `GRAPH_SUBSCRIPTION_ID` values only matter for the initial seed of a fresh secret; keep them roughly in sync for disaster recovery.
 
-To re-register (e.g. after subscription expires — `register()` sends the immutable-ID header):
+To re-register (e.g. after a subscription expires — `register()` sends the immutable-ID header):
 ```python
 from clients.azure import GraphEmailClient
 from clients.graph_subscriptions import register
@@ -112,6 +115,14 @@ result = register(c, "https://inbox-webhook-aizbgjlava-uc.a.run.app")
 print(
     result["id"]
 )  # write to the graph-subscription-id secret (authoritative); update GRAPH_SUBSCRIPTION_ID for DR
+
+sent_result = register(
+    c,
+    "https://inbox-webhook-aizbgjlava-uc.a.run.app",
+    resource="me/mailFolders/sentitems/messages",
+    client_state="inbox-webhook-sent",
+)
+print(sent_result["id"])  # write to the graph-sent-subscription-id secret
 ```
 
 ## Local development
@@ -155,10 +166,11 @@ CLOUD_SQL_CONNECTION_NAME=bens-project-462804:us-central1:inbox \
 | `webhook-label-token` | Processor CF + webhook CF — authenticates `/label` action button callbacks. **Owned by the platform state (`~/src/infra`)**; read here via data source |
 | `grafana-otlp-endpoint`, `grafana-otlp-token` | Processor + webhook CFs — OTel metrics/traces export to Grafana Cloud. **Owned by the platform state (`~/src/infra`)**; read here via data source |
 | `asana-api-key` | **Owned by the platform state (`~/src/infra`)** for the tasks repo (github.com/bdrolet/tasks) — inbox no longer references it |
-| `hubspot-token` | Processor CF — HubSpot contact upsert + email logging |
+| `people-api-token` | Processor CF — authenticates `people-api` sender-context lookups. **Owned by the people repo (github.com/bdrolet/people)**; read here via data source |
 | `hf-token` | Processor CF — Hugging Face auth for bge model download |
 | `search-token` | `inbox-api` — authenticates API requests |
-| `graph-subscription-id` | Renew CF — subscription to renew/self-heal |
+| `graph-subscription-id` | Renew CF — Inbox subscription to renew/self-heal |
+| `graph-sent-subscription-id` | Renew CF — Sent Items subscription to renew/self-heal |
 
 ## Migration phases
 
