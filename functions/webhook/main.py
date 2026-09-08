@@ -13,7 +13,7 @@ Deploy with:
     --gen2 --runtime python311 --region us-central1 \
     --source functions/webhook --entry-point webhook \
     --trigger-http --allow-unauthenticated \
-    --set-env-vars GCP_PROJECT_ID=bens-project-462804,WEBHOOK_CLIENT_STATE=inbox-webhook
+    --set-env-vars GCP_PROJECT_ID=bens-project-462804,WEBHOOK_CLIENT_STATE=inbox-webhook,WEBHOOK_CLIENT_STATE_SENT=inbox-webhook-sent
 """
 
 import json

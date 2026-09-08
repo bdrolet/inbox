@@ -41,7 +41,7 @@ This overrides the default "commit or push only when asked" behavior for code ch
 | **Database** | Cloud SQL Postgres 16 + pgvector, `bens-project-462804:us-central1:inbox`, db `app` |
 | **Email source** | Microsoft Graph API (Outlook/Office 365), MSAL auth |
 | **LLM** | Claude Sonnet via Anthropic API |
-| **Trigger** | Graph change notifications → webhook CF → Pub/Sub → processor CF |
+| **Trigger** | Graph change notifications (Inbox + Sent Items subscriptions) → webhook CF → Pub/Sub (folder attribute) → processor CF |
 | **Domain events** | Pub/Sub topic `email-events` (inbox-owned) — `email_classified` + `label_applied` + `email_sent` events; consumed by the separate `tasks` repo (github.com/bdrolet/tasks), which owns Asana, the `schedule` repo (github.com/bdrolet/schedule), which owns Google Calendar, and the `people` repo (github.com/bdrolet/people), which owns contacts |
 | **Notifications** | Self-hosted ntfy at `ntfy.drolet.ai`, topic `inbox` |
 | **GCP infra** | `terraform/` (Cloud Functions, Pub/Sub, Cloud SQL, Scheduler, Secrets, IAM) |
@@ -57,7 +57,7 @@ handlers/         Multi-service orchestration (pipeline, per-category actions)
   sent.py         Handles Sent Items notifications — publishes email_sent, stores nothing
 functions/        Cloud Function entry points (standalone, minimal deps)
   webhook/        Receives Graph notifications → publishes to Pub/Sub
-  renew/          Renews Graph subscription every 2 days
+  renew/          Renews both Graph subscriptions (Inbox, Sent Items) every 2 days
 api/              FastAPI app (Cloud Run service inbox-api)
   routers/        search.py (mailbox/group/DB search), emails.py (draft, attach, send), redirect.py (/r/{uuid} → live webLink)
 main.py           Processor + sweep Cloud Function entry points (Pub/Sub event trigger; sweep is HTTP)

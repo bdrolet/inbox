@@ -16,7 +16,8 @@ search_token     = "..."
 shared_mailboxes = ""
 
 # people-api (github.com/bdrolet/people) — Cloud Run URL for sender context at classify time
-people_api_url = "https://people-api.drolet.cloud"
+# real value: the people-api Cloud Run domain mapping
+people_api_url = "https://people-api.example.com"
 
 # GitHub Actions deployer service account (GCP_DEPLOYER_SA secret)
 deployer_sa = "inbox-deployer@bens-project-462804.iam.gserviceaccount.com"
