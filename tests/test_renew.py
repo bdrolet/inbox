@@ -31,7 +31,11 @@ def _ensure_module(name, **attrs):
 
 _ensure_module("functions_framework", http=lambda fn: fn)  # identity decorator
 _ensure_module("msal")
-_ensure_module("requests", Response=type("Response", (), {}))  # used only in a type hint
+_ensure_module(
+    "requests",
+    Response=type("Response", (), {}),  # used only in a type hint
+    post=lambda *a, **k: None,  # overwritten per-test via monkeypatch.setattr
+)
 
 # google-cloud-secret-manager + api-core: build the package chain only if absent.
 try:
@@ -209,6 +213,23 @@ def test_subscriptions_from_env(monkeypatch):
         subs[1]["client_state"] == "inbox-webhook-sent"
         and subs[1]["secret_name"] == "graph-sent-subscription-id"
     )
+
+
+def test_create_subscription_sends_immutable_id_header(monkeypatch):
+    seen_headers = {}
+
+    def fake_post(url, json=None, headers=None):
+        seen_headers.update(headers)
+        return _Resp(201, {"id": "s"})
+
+    monkeypatch.setattr(renew_main.requests, "post", fake_post)
+    monkeypatch.setenv("WEBHOOK_URL", "https://webhook.example.com")
+
+    result = renew_main._create_subscription(INBOX, "tok")
+
+    assert result["id"] == "s"
+    assert seen_headers["Prefer"] == 'IdType="ImmutableId"'
+    assert seen_headers["Authorization"] == "Bearer tok"
 
 
 def test_renew_handles_each_subscription(monkeypatch):
