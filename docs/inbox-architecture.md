@@ -484,7 +484,7 @@ inbox/
 │   └── tags.py                  # Phase 3: ensure_exists()
 │
 ├── services/                    # business logic — one concern per file
-│   ├── ingestion.py             # normalize Graph notification → Message + upsert sender
+│   ├── ingestion.py             # fetch Graph message → Message (normalize)
 │   ├── embedding.py             # Phase 2: text_for_embedding(), strip reply chains, embed + store
 │   ├── classification.py        # Phase 3: retrieve neighbors, build prompt, call Claude, write result
 │   ├── labeling.py              # Phase 4: apply_label() — human correction/confirmation path
