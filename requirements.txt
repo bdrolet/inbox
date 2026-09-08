@@ -1,5 +1,5 @@
 # LLM (Phase 3+)
-anthropic>=0.25
+anthropic>=0.25,<1  # <1: a major bump must be a deliberate, tested change (1.x drops the typed temperature kwarg)
 
 # Microsoft Graph / Azure auth
 msal>=1.24.0
