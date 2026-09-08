@@ -59,7 +59,11 @@ resource "google_secret_manager_secret_version" "graph_subscription_id" {
   }
 }
 
+# A secret with zero versions is the bootstrap case — the renew CF's `_load_subscription_id`
+# catches NotFound, registers a fresh subscription and writes the id back. Set the variable
+# only for disaster recovery (mirrors graph-subscription-id).
 resource "google_secret_manager_secret_version" "graph_sent_subscription_id" {
+  count       = var.graph_sent_subscription_id == "" ? 0 : 1
   secret      = google_secret_manager_secret.secrets["graph-sent-subscription-id"].id
   secret_data = var.graph_sent_subscription_id
 
