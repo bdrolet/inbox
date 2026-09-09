@@ -10,13 +10,14 @@ msal_token_cache = "{\"Account\":{},\"AccessToken\":{},\"RefreshToken\":{},\"IdT
 # HuggingFace — from huggingface.co/settings/tokens (read scope)
 hf_token = "hf_..."
 
-# HubSpot — from Settings → Legacy Apps → your private app → Access Token
-hubspot_token = "pat-na2-..."
-
 # Search Cloud Function — generate with: openssl rand -hex 32
 search_token     = "..."
 # Comma-separated shared mailbox emails to search by default (leave empty if none)
 shared_mailboxes = ""
+
+# people-api (github.com/bdrolet/people) — Cloud Run URL for sender context at classify time
+# real value: the people-api Cloud Run domain mapping
+people_api_url = "https://people-api.example.com"
 
 # GitHub Actions deployer service account (GCP_DEPLOYER_SA secret)
 deployer_sa = "inbox-deployer@bens-project-462804.iam.gserviceaccount.com"

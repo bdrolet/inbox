@@ -3,7 +3,7 @@ Cloud Function: inbox webhook receiver.
 
 Handles five interactions:
   GET  ?validationToken=...  — subscription validation handshake (must reply in 10s)
-  POST /                     — change notification; publishes each created message to Pub/Sub
+  POST /                     — change notification (Inbox or Sent Items subscription, by clientState); publishes each created message to Pub/Sub with a folder attribute
   POST /label                — human feedback from ntfy action buttons; publishes to inbox-labels
   GET  /label?...&token=...  — human feedback from Asana action links (browser click); same effect
   GET  /calendar?...         — legacy RSVP link from before schedule owned calendar; returns 410
@@ -13,7 +13,7 @@ Deploy with:
     --gen2 --runtime python311 --region us-central1 \
     --source functions/webhook --entry-point webhook \
     --trigger-http --allow-unauthenticated \
-    --set-env-vars GCP_PROJECT_ID=bens-project-462804,WEBHOOK_CLIENT_STATE=inbox-webhook
+    --set-env-vars GCP_PROJECT_ID=bens-project-462804,WEBHOOK_CLIENT_STATE=inbox-webhook,WEBHOOK_CLIENT_STATE_SENT=inbox-webhook-sent
 """
 
 import json
@@ -135,7 +135,13 @@ def webhook(request):
 
         # Graph change notifications
         body = request.get_json(silent=True) or {}
-        client_state = os.environ.get("WEBHOOK_CLIENT_STATE", "inbox-webhook")
+        # Two Graph subscriptions share this endpoint (Inbox and Sent Items);
+        # clientState is the routing key. The folder rides along as a Pub/Sub
+        # attribute so the processor can branch without re-reading Graph.
+        folder_by_state = {
+            os.environ.get("WEBHOOK_CLIENT_STATE", "inbox-webhook"): "inbox",
+            os.environ.get("WEBHOOK_CLIENT_STATE_SENT", "inbox-webhook-sent"): "sentitems",
+        }
         published = 0
 
         futures = []
@@ -148,11 +154,12 @@ def webhook(request):
                 if notification.get("changeType") != "created":
                     continue
 
-                if notification.get("clientState") != client_state:
+                folder = folder_by_state.get(notification.get("clientState", ""))
+                if folder is None:
                     logger.warning("Unexpected clientState: %s", notification.get("clientState"))
                     continue
 
-                carrier = {}
+                carrier = {"folder": folder}
                 inject(carrier)
                 futures.append(
                     publisher.publish(messages_topic, json.dumps(notification).encode(), **carrier)

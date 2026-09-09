@@ -31,6 +31,9 @@ stage_duration: metrics.Histogram = metrics.NoOpMeter("noop").create_histogram("
 neighbors_hist: metrics.Histogram = metrics.NoOpMeter("noop").create_histogram("noop")
 sweep_actions: metrics.Counter = metrics.NoOpMeter("noop").create_counter("noop")
 events_published: metrics.Counter = metrics.NoOpMeter("noop").create_counter("noop")
+people_lookup: metrics.Counter = metrics.NoOpMeter("noop").create_counter("noop")
+people_lookup_duration: metrics.Histogram = metrics.NoOpMeter("noop").create_histogram("noop")
+emails_sent_published: metrics.Counter = metrics.NoOpMeter("noop").create_counter("noop")
 
 
 def setup_telemetry(service_name: str) -> None:
@@ -42,6 +45,7 @@ def setup_telemetry(service_name: str) -> None:
     global emails_processed, emails_duplicates, pipeline_errors, claude_tokens
     global human_feedback, confidence_hist, stage_duration, neighbors_hist
     global sweep_actions, events_published
+    global people_lookup, people_lookup_duration, emails_sent_published
 
     endpoint = os.environ.get("GRAFANA_OTLP_ENDPOINT")
     if not endpoint:
@@ -105,6 +109,15 @@ def setup_telemetry(service_name: str) -> None:
     events_published = meter.create_counter(
         "inbox.events.published",
         description="Domain events published to email-events, by event type and outcome",
+    )
+    people_lookup = meter.create_counter(
+        "inbox.people.lookup", description="people-api sender-context lookups by outcome"
+    )
+    people_lookup_duration = meter.create_histogram(
+        "inbox.people.lookup.duration", unit="ms", description="people-api lookup latency"
+    )
+    emails_sent_published = meter.create_counter(
+        "inbox.emails.sent.published", description="email_sent events published"
     )
 
     # --- Logs ---

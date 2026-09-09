@@ -71,12 +71,6 @@ resource "google_secret_manager_secret_iam_member" "process_cf_grafana" {
   member    = "serviceAccount:${google_service_account.process_cf.email}"
 }
 
-resource "google_secret_manager_secret_iam_member" "process_cf_hubspot" {
-  secret_id = google_secret_manager_secret.secrets["hubspot-token"].secret_id
-  role      = "roles/secretmanager.secretAccessor"
-  member    = "serviceAccount:${google_service_account.process_cf.email}"
-}
-
 resource "google_secret_manager_secret_iam_member" "process_cf_hf_token" {
   secret_id = google_secret_manager_secret.secrets["hf-token"].secret_id
   role      = "roles/secretmanager.secretAccessor"
@@ -163,6 +157,18 @@ resource "google_secret_manager_secret_iam_member" "renew_cf_subscription_access
 
 resource "google_secret_manager_secret_iam_member" "renew_cf_subscription_version_manager" {
   secret_id = google_secret_manager_secret.secrets["graph-subscription-id"].secret_id
+  role      = "roles/secretmanager.secretVersionManager"
+  member    = "serviceAccount:${google_service_account.renew_cf.email}"
+}
+
+resource "google_secret_manager_secret_iam_member" "renew_cf_sent_subscription_accessor" {
+  secret_id = google_secret_manager_secret.secrets["graph-sent-subscription-id"].secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.renew_cf.email}"
+}
+
+resource "google_secret_manager_secret_iam_member" "renew_cf_sent_subscription_version_manager" {
+  secret_id = google_secret_manager_secret.secrets["graph-sent-subscription-id"].secret_id
   role      = "roles/secretmanager.secretVersionManager"
   member    = "serviceAccount:${google_service_account.renew_cf.email}"
 }

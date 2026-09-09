@@ -34,10 +34,11 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from clients.db import get_conn
+from clients import people_api
 from models.message import Message
 from services.labeling import apply_label
 from repo.embeddings import retrieve_neighbors
-from repo import classifications, senders
+from repo import classifications
 from services.classification import aggregate_neighbors, build_prompt
 import clients.claude as claude_client
 
@@ -83,7 +84,7 @@ def ai_predict_category(conn, msg) -> str | None:
 
     neighbors = retrieve_neighbors(conn, vec, exclude_id=message_id)
     aggregates = aggregate_neighbors(neighbors)
-    sender_ctx = senders.get(conn, msg["sender"], "email")
+    sender_ctx = people_api.get_person(msg["sender"])
     msg_typed: Message = {
         "id": message_id,
         "source": "email",

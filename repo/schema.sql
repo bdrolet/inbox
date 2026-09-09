@@ -47,17 +47,6 @@ CREATE INDEX IF NOT EXISTS classifications_message_id
 -- Add importance to existing deployments (no-op if already present)
 ALTER TABLE classifications ADD COLUMN IF NOT EXISTS importance TEXT;
 
-CREATE TABLE IF NOT EXISTS senders (
-    identifier        TEXT NOT NULL,
-    source            TEXT NOT NULL,
-    first_seen        TIMESTAMPTZ,
-    message_count     INT  DEFAULT 0,
-    my_response_count INT  DEFAULT 0,
-    relationship_label TEXT,
-    notes             TEXT,
-    PRIMARY KEY (source, identifier)
-);
-
 CREATE TABLE IF NOT EXISTS tags (
     name        TEXT PRIMARY KEY,
     description TEXT,

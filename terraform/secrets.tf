@@ -1,20 +1,20 @@
 locals {
   secrets = {
-    "client-id"             = var.client_id
-    "client-secret"         = var.client_secret
-    "tenant-id"             = var.tenant_id
-    "anthropic-api-key"     = var.anthropic_api_key
-    "msal-token-cache"      = var.msal_token_cache
-    "inbox-db-password"     = var.db_password
-    "hubspot-token"         = var.hubspot_token
-    "hf-token"              = var.hf_token
-    "search-token"          = var.search_token
-    "graph-subscription-id" = var.graph_subscription_id
+    "client-id"                  = var.client_id
+    "client-secret"              = var.client_secret
+    "tenant-id"                  = var.tenant_id
+    "anthropic-api-key"          = var.anthropic_api_key
+    "msal-token-cache"           = var.msal_token_cache
+    "inbox-db-password"          = var.db_password
+    "hf-token"                   = var.hf_token
+    "search-token"               = var.search_token
+    "graph-subscription-id"      = var.graph_subscription_id
+    "graph-sent-subscription-id" = var.graph_sent_subscription_id
   }
 
   # Secrets whose live value is updated at runtime (by the renew/process CFs) and
   # must not be overwritten by CI / Terraform after their initial seed.
-  self_managed_secrets   = ["msal-token-cache", "graph-subscription-id"]
+  self_managed_secrets   = ["msal-token-cache", "graph-subscription-id", "graph-sent-subscription-id"]
   auto_versioned_secrets = { for k, v in local.secrets : k => v if !contains(local.self_managed_secrets, k) }
 }
 
@@ -57,6 +57,26 @@ resource "google_secret_manager_secret_version" "graph_subscription_id" {
   lifecycle {
     ignore_changes = [secret_data]
   }
+}
+
+# A secret with zero versions is the bootstrap case — the renew CF's `_load_subscription_id`
+# catches NotFound, registers a fresh subscription and writes the id back. Set the variable
+# only for disaster recovery (mirrors graph-subscription-id).
+resource "google_secret_manager_secret_version" "graph_sent_subscription_id" {
+  count       = var.graph_sent_subscription_id == "" ? 0 : 1
+  secret      = google_secret_manager_secret.secrets["graph-sent-subscription-id"].id
+  secret_data = var.graph_sent_subscription_id
+
+  lifecycle {
+    ignore_changes = [secret_data]
+  }
+}
+
+# Owned by the people repo's terraform (github.com/bdrolet/people); inbox-process
+# reads it to call people-api for sender context. People grants our SA accessor.
+data "google_secret_manager_secret" "people_api_token" {
+  secret_id = "people-api-token"
+  project   = var.project_id
 }
 
 # ntfy-token and ntfy-password were created outside Terraform — reference as data sources

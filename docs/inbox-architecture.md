@@ -101,7 +101,6 @@ The only persistent state is the MSAL token cache in Secret Manager (`msal-token
 │           │                                                          │
 │           ▼                                                          │
 │  repo/messages.py  ──────────────────────────────────────────────►   │
-│  repo/senders.py   ──────────────────────────────────────────────►   │
 │           │                                                          │
 │           ▼                                                          │
 │  services/embedding.py                                               │
@@ -132,7 +131,6 @@ The only persistent state is the MSAL token cache in Secret Manager (`msal-token
   ├── messages                          ├── anthropic-api-key
   ├── message_embeddings                ├── inbox-db-password
   ├── classifications                   └── msal-token-cache
-  ├── senders
   └── tags
 
   Cloud Scheduler → Cloud Function      ← runs every 2 days
@@ -167,6 +165,8 @@ Steps when a new message arrives, each a function call in `handlers/pipeline.py`
 
 The Cloud Function responds HTTP 202 immediately and publishes the payload to the `inbox-messages` Pub/Sub topic. Pub/Sub pushes the message to the `inbox-process` Cloud Function via its event trigger subscription. Only `changeType = "created"` notifications are processed; updates and deletes are discarded.
 
+A second Graph subscription watches Sent Items (`clientState` `inbox-webhook-sent`, resource `me/mailFolders/sentitems/messages`). The webhook distinguishes the two by `clientState` and stamps a `folder` Pub/Sub attribute (`inbox` or `sentitems`); `main.py::process` routes `sentitems` notifications to `handlers/sent.py`, which publishes an `email_sent` event and otherwise touches neither the pipeline nor the database.
+
 Future SMS/voicemail ingestion services publish to the same topic with a `source` field; `handlers/pipeline.py` routes by source.
 
 ### Step 2 — Normalize to common Message shape
@@ -195,9 +195,7 @@ Strips quoted reply chains (`> On Tuesday...` patterns) and signature blocks fro
 
 ### Step 6 — Update sender stats
 
-**Function**: `repo.senders.upsert(msg.sender, msg.source)`
-
-Inserts or updates the sender's row. Sets `first_seen` on first message. Increments `message_count`. Does not touch `my_response_count` — updated separately when outbound responses are tracked (Phase 6+).
+Removed. Sender/contact history is no longer tracked in inbox's own database — the `people` repo owns it.
 
 ### Step 7 — Generate and store embedding
 
@@ -219,9 +217,7 @@ Groups the 10 neighbor rows by `current_label`. For each category present, compu
 
 ### Step 10 — Look up sender context
 
-**Function**: `repo.senders.get(msg.sender, msg.source) → dict`
-
-Fetches `message_count`, `my_response_count`, `relationship_label`, `notes`. Passed to the prompt as plain text. A sender seen 50 times with `relationship_label = "family"` gets very different weight than a first-time unknown sender.
+Sender context now comes from `people-api` (`clients/people_api.get_person`, 2 s timeout, fail-open) rather than the local `senders` table.
 
 ### Step 11 — Build LLM prompt
 
@@ -229,7 +225,7 @@ Fetches `message_count`, `my_response_count`, `relationship_label`, `notes`. Pas
 
 Assembles the full prompt from four parts:
 1. **System prompt** — defines the 5 categories with descriptions, the tag controlled vocabulary, and the required JSON output schema
-2. **Sender context** — message count, response rate, relationship label, notes
+2. **Sender context** — message count, response rate, relationship label, notes (from `people-api`)
 3. **Retrieval context** — per-category aggregates table + top 3 raw examples with human-confirmed labels
 4. **Current message** — subject, sender, received time, and body (truncated to ~1500 chars)
 
@@ -445,17 +441,6 @@ CREATE TABLE classifications (
 );
 CREATE INDEX ON classifications (message_id, created_at DESC);
 
-CREATE TABLE senders (
-  identifier TEXT NOT NULL,
-  source TEXT NOT NULL,
-  first_seen TIMESTAMPTZ,
-  message_count INT DEFAULT 0,
-  my_response_count INT DEFAULT 0,
-  relationship_label TEXT,
-  notes TEXT,
-  PRIMARY KEY (source, identifier)
-);
-
 CREATE TABLE tags (
   name TEXT PRIMARY KEY,
   description TEXT,
@@ -495,12 +480,11 @@ inbox/
 │   ├── schema.sql               # CREATE TABLE + CREATE INDEX statements
 │   ├── messages.py              # insert(), exists(), get()
 │   ├── classifications.py       # insert()
-│   ├── senders.py               # upsert(), get()
 │   ├── embeddings.py            # Phase 2: store_embedding(), retrieve_neighbors(), apply_label()
 │   └── tags.py                  # Phase 3: ensure_exists()
 │
 ├── services/                    # business logic — one concern per file
-│   ├── ingestion.py             # normalize Graph notification → Message + upsert sender
+│   ├── ingestion.py             # fetch Graph message → Message (normalize)
 │   ├── embedding.py             # Phase 2: text_for_embedding(), strip reply chains, embed + store
 │   ├── classification.py        # Phase 3: retrieve neighbors, build prompt, call Claude, write result
 │   ├── labeling.py              # Phase 4: apply_label() — human correction/confirmation path

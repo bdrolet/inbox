@@ -31,6 +31,9 @@ resource "google_project_service" "apis" {
     "storage.googleapis.com",
     "sqladmin.googleapis.com",
     "compute.googleapis.com",
+    # people-api's Google Contacts client needs this; enabled by hand during
+    # people's Phase A deploy, codified here so a fresh project gets it too.
+    "people.googleapis.com",
   ])
 
   service            = each.value

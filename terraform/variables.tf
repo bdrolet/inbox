@@ -82,10 +82,15 @@ variable "asana_project_id" {
   default     = ""
 }
 
-variable "hubspot_token" {
-  description = "HubSpot private app access token (pat-na2-...)"
+variable "graph_sent_subscription_id" {
+  description = "Seed for the Sent Items Graph subscription id secret; the renew CF owns the live value (self-heal). Empty seed = renew CF registers on first run."
   type        = string
-  sensitive   = true
+  default     = ""
+}
+
+variable "people_api_url" {
+  description = "people-api Cloud Run URL — gcloud run services describe people-api --region us-central1 --format='value(status.url)'"
+  type        = string
   default     = ""
 }
 

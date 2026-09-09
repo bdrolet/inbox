@@ -45,8 +45,9 @@ resource "google_cloudfunctions2_function" "webhook" {
     max_instance_count    = 3
     timeout_seconds       = 30
     environment_variables = {
-      GCP_PROJECT_ID       = var.project_id
-      WEBHOOK_CLIENT_STATE = "inbox-webhook"
+      GCP_PROJECT_ID            = var.project_id
+      WEBHOOK_CLIENT_STATE      = "inbox-webhook"
+      WEBHOOK_CLIENT_STATE_SENT = "inbox-webhook-sent"
     }
     secret_environment_variables {
       key        = "WEBHOOK_LABEL_TOKEN"
@@ -125,10 +126,12 @@ resource "google_cloudfunctions2_function" "renew" {
     max_instance_count    = 1
     timeout_seconds       = 60
     environment_variables = {
-      GCP_PROJECT_ID           = var.project_id
-      WEBHOOK_URL              = google_cloudfunctions2_function.webhook.service_config[0].uri
-      SUBSCRIPTION_SECRET_NAME = "graph-subscription-id"
-      WEBHOOK_CLIENT_STATE     = "inbox-webhook"
+      GCP_PROJECT_ID                = var.project_id
+      WEBHOOK_URL                   = google_cloudfunctions2_function.webhook.service_config[0].uri
+      SUBSCRIPTION_SECRET_NAME      = "graph-subscription-id"
+      SENT_SUBSCRIPTION_SECRET_NAME = "graph-sent-subscription-id"
+      WEBHOOK_CLIENT_STATE          = "inbox-webhook"
+      WEBHOOK_CLIENT_STATE_SENT     = "inbox-webhook-sent"
     }
     secret_environment_variables {
       key        = "CLIENT_ID"
@@ -179,6 +182,27 @@ data "archive_file" "process_source" {
     ".dockerignore",
     ".token_cache.json",
     ".env",
+    # Scratch/caches that live under the repo root but must never change the
+    # source hash (archive_file scans the filesystem, not git): SDD workspace,
+    # bytecode, tool caches. Same list as tasks' cloud_functions.tf.
+    ".superpowers",
+    "__pycache__",
+    "clients/__pycache__",
+    "clients/azure/__pycache__",
+    "services/__pycache__",
+    "handlers/__pycache__",
+    "handlers/actions/__pycache__",
+    "models/__pycache__",
+    "repo/__pycache__",
+    "api/__pycache__",
+    "api/routers/__pycache__",
+    "tests/__pycache__",
+    ".pytest_cache",
+    ".mypy_cache",
+    ".ruff_cache",
+    # google-github-actions/auth writes its WIF credentials file into the job
+    # working directory (this repo root, in CI) — never ship it in the zip.
+    "gha-creds-*.json",
   ]
 }
 
@@ -223,6 +247,7 @@ resource "google_cloudfunctions2_function" "process" {
       OTEL_BSP_SCHEDULE_DELAY   = "2000"
       OTEL_BSP_EXPORT_TIMEOUT   = "30000"
       REDIRECTOR_BASE_URL       = google_cloud_run_v2_service.api.uri
+      PEOPLE_API_URL            = var.people_api_url
     }
     secret_environment_variables {
       key        = "POSTGRES_PASSWORD"
@@ -279,15 +304,15 @@ resource "google_cloudfunctions2_function" "process" {
       version    = "latest"
     }
     secret_environment_variables {
-      key        = "HUBSPOT_TOKEN"
-      project_id = var.project_id
-      secret     = google_secret_manager_secret.secrets["hubspot-token"].secret_id
-      version    = "latest"
-    }
-    secret_environment_variables {
       key        = "HF_TOKEN"
       project_id = var.project_id
       secret     = google_secret_manager_secret.secrets["hf-token"].secret_id
+      version    = "latest"
+    }
+    secret_environment_variables {
+      key        = "PEOPLE_API_TOKEN"
+      project_id = var.project_id
+      secret     = data.google_secret_manager_secret.people_api_token.secret_id
       version    = "latest"
     }
   }
