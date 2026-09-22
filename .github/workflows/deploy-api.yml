@@ -45,9 +45,16 @@ jobs:
             --region us-central1 \
             --project bens-project-462804
 
+      # Terraform creates inbox-redirect (terraform/redirect.tf); this step only
+      # rolls the image on an existing service. Creating it here would race the
+      # apply and leave Terraform with a 409 on its own resource.
       - name: Deploy inbox-redirect (same image)
         run: |
-          gcloud run deploy inbox-redirect \
-            --image us-central1-docker.pkg.dev/bens-project-462804/inbox/inbox-api:latest \
-            --region us-central1 \
-            --project bens-project-462804
+          if gcloud run services describe inbox-redirect --region us-central1 --project bens-project-462804 >/dev/null 2>&1; then
+            gcloud run deploy inbox-redirect \
+              --image us-central1-docker.pkg.dev/bens-project-462804/inbox/inbox-api:latest \
+              --region us-central1 \
+              --project bens-project-462804
+          else
+            echo "inbox-redirect not created by Terraform yet — skipping"
+          fi
