@@ -1,5 +1,6 @@
 import logging
 import os
+import secrets
 from datetime import datetime
 from typing import Literal
 
@@ -20,8 +21,10 @@ _bearer = HTTPBearer(auto_error=False)
 def _verify_token(credentials: HTTPAuthorizationCredentials | None = Security(_bearer)) -> None:
     expected = os.environ.get("SEARCH_TOKEN")
     if not expected:
+        if os.environ.get("K_SERVICE"):
+            raise HTTPException(status_code=503, detail="service misconfigured: no auth token")
         return
-    if credentials is None or credentials.credentials != expected:
+    if credentials is None or not secrets.compare_digest(credentials.credentials, expected):
         raise HTTPException(status_code=401)
 
 
