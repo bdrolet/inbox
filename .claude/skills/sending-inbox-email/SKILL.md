@@ -18,7 +18,7 @@ Outbound email via the `inbox-api` Cloud Run service (Microsoft Graph under the 
 ## Auth token
 
 ```bash
-TOKEN=$(grep 'search_token' ~/src/inbox/terraform/terraform.tfvars | grep -o '"[^"]*"' | tr -d '"')
+TOKEN=$(gcloud auth print-identity-token)   # Cloud Run IAM; your gcloud login is the credential
 BASE=https://inbox-api.drolet.cloud
 ```
 

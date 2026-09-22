@@ -9,12 +9,6 @@ from clients.azure.email import Email
 client = TestClient(app)
 
 
-@pytest.fixture(autouse=True)
-def _no_auth(monkeypatch):
-    """_verify_token reads SEARCH_TOKEN per request — unset it so tests skip auth."""
-    monkeypatch.delenv("SEARCH_TOKEN", raising=False)
-
-
 def _http_error(status: int) -> requests.exceptions.HTTPError:
     resp = requests.Response()
     resp.status_code = status

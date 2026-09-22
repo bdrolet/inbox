@@ -2,6 +2,7 @@ import logging
 
 from fastapi import FastAPI
 
+from api import caller
 from api.routers import emails, search
 
 # force=True installs a fresh stderr handler even though the Cloud Run/uvicorn
@@ -13,5 +14,6 @@ from api.routers import emails, search
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s", force=True)
 
 app = FastAPI(title="inbox-api")
+caller.install(app)
 app.include_router(search.router)
 app.include_router(emails.router)

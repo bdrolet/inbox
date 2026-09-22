@@ -38,7 +38,7 @@ before running.
 ## 2. Local API handle
 
 ```bash
-env -u GCP_PROJECT_ID -u SEARCH_TOKEN ./.venv/bin/uvicorn api.main:app --port 8124 --log-level warning
+env -u GCP_PROJECT_ID ./.venv/bin/uvicorn api.main:app --port 8124 --log-level warning
 ```
 (run in background; cleanup with `pkill -f "uvicorn api.main:app --port 812"`)
 
@@ -46,12 +46,12 @@ Gotchas that cost time if forgotten:
 
 - **`POST /search` does not work locally** — it hardcodes `authenticate_headless()`
   (Secret Manager). Source real message IDs from the prod API instead:
-  `TOKEN=$(grep 'search_token' terraform/terraform.tfvars | grep -o '"[^"]*"' | tr -d '"')`
-  then `curl -s -X POST https://inbox-api-aizbgjlava-uc.a.run.app/search -H "Authorization: Bearer $TOKEN" ...`
+  `TOKEN=$(gcloud auth print-identity-token)` (Cloud Run IAM; your gcloud login is the credential)
+  then `curl -s -X POST https://inbox-api.drolet.cloud/search -H "Authorization: Bearer $TOKEN" ...`
 - Read endpoints auth via silent MSAL from `~/.inbox-token-cache.json`. If auth fails →
   **REQUIRED:** use the `refreshing-msal-token` skill.
-- To probe token auth, start a second server with `SEARCH_TOKEN=probe-secret` set and
-  expect 401/401/200 for missing/wrong/correct bearer.
+- There is no auth in the app: Cloud Run IAM is the only check and it is not in the
+  container, so a local server accepts every request without a header.
 - Group test data: list the account's M365 groups (real conversations exist, e.g.
   `allcompany@drolet.cloud`) via `clients.graph.get_graph_client()` + `get_member_groups()`.
 - Broken venv (dangling `python3.13` symlink): `brew install python@3.13`, recreate

@@ -168,7 +168,6 @@ CLOUD_SQL_CONNECTION_NAME=bens-project-462804:us-central1:inbox \
 | `grafana-otlp-endpoint`, `grafana-otlp-token` | Processor + webhook CFs — OTel metrics/traces export to Grafana Cloud. **Owned by the platform state (`~/src/infra`)**; read here via data source |
 | `asana-api-key` | **Owned by the platform state (`~/src/infra`)** for the tasks repo (github.com/bdrolet/tasks) — inbox no longer references it |
 | `hf-token` | Processor CF — Hugging Face auth for bge model download |
-| `search-token` | `inbox-api` — authenticates API requests |
 | `graph-subscription-id` | Renew CF — Inbox subscription to renew/self-heal |
 | `graph-sent-subscription-id` | Renew CF — Sent Items subscription to renew/self-heal |
 
