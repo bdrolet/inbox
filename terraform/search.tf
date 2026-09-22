@@ -37,9 +37,3 @@ resource "google_secret_manager_secret_iam_member" "search_cf_azure" {
   member    = "serviceAccount:${google_service_account.search_cf.email}"
 }
 
-resource "google_secret_manager_secret_iam_member" "search_cf_search_token" {
-  secret_id = google_secret_manager_secret.secrets["search-token"].secret_id
-  role      = "roles/secretmanager.secretAccessor"
-  member    = "serviceAccount:${google_service_account.search_cf.email}"
-}
-
