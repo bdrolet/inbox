@@ -42,6 +42,9 @@ resource "google_cloud_run_v2_service" "api" {
   name     = "inbox-api"
   location = var.region
 
+  # Service-to-service callers mint ID tokens for the hostname they call.
+  custom_audiences = ["https://inbox-api.drolet.cloud"]
+
   template {
     service_account = google_service_account.search_cf.email
     timeout         = "60s"
@@ -86,15 +89,6 @@ resource "google_cloud_run_v2_service" "api" {
       env {
         name  = "SHARED_MAILBOXES"
         value = var.shared_mailboxes
-      }
-      env {
-        name = "SEARCH_TOKEN"
-        value_source {
-          secret_key_ref {
-            secret  = google_secret_manager_secret.secrets["search-token"].secret_id
-            version = "latest"
-          }
-        }
       }
       env {
         name = "POSTGRES_PASSWORD"
@@ -147,13 +141,32 @@ resource "google_cloud_run_v2_service" "api" {
   ]
 }
 
-# Allow unauthenticated invocations — bearer token auth enforced in app code via SEARCH_TOKEN
-resource "google_cloud_run_v2_service_iam_member" "api_public" {
+# Callers of inbox-api. Cloud Run IAM is the only authentication: there is no
+# app-level token. tasks' events and webhook CFs search and read mail for
+# triage (tasks/clients/inbox_api.py); their SAs live in tasks' terraform, so
+# they are resolved by account id.
+data "google_service_account" "tasks_cfs" {
+  for_each   = toset(["tasks-events-cf", "tasks-webhook-cf"])
+  account_id = each.key
+  project    = var.project_id
+}
+
+resource "google_cloud_run_v2_service_iam_member" "api_invoker_users" {
+  for_each = toset(var.api_invoker_users)
   project  = var.project_id
   location = var.region
   name     = google_cloud_run_v2_service.api.name
   role     = "roles/run.invoker"
-  member   = "allUsers"
+  member   = "user:${each.value}"
+}
+
+resource "google_cloud_run_v2_service_iam_member" "api_invoker_tasks" {
+  for_each = data.google_service_account.tasks_cfs
+  project  = var.project_id
+  location = var.region
+  name     = google_cloud_run_v2_service.api.name
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${each.value.email}"
 }
 
 # Allow the service account to pull images from Artifact Registry
