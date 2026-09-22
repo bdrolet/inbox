@@ -11,6 +11,7 @@ import time
 import requests
 
 import clients.otel as otel
+from clients import gcp_auth
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +30,7 @@ def get_person(email: str) -> dict | None:
     try:
         resp = requests.get(
             f"{base}/people/{addr}",
-            headers={"Authorization": f"Bearer {os.environ.get('PEOPLE_API_TOKEN', '')}"},
+            headers={"Authorization": f"Bearer {gcp_auth.id_token_for(base)}"},
             timeout=TIMEOUT_S,
         )
         if resp.status_code == 404:

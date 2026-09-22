@@ -309,12 +309,6 @@ resource "google_cloudfunctions2_function" "process" {
       secret     = google_secret_manager_secret.secrets["hf-token"].secret_id
       version    = "latest"
     }
-    secret_environment_variables {
-      key        = "PEOPLE_API_TOKEN"
-      project_id = var.project_id
-      secret     = data.google_secret_manager_secret.people_api_token.secret_id
-      version    = "latest"
-    }
   }
 
   event_trigger {
