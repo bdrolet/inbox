@@ -2,7 +2,7 @@ import logging
 
 from fastapi import FastAPI
 
-from api.routers import emails, redirect, search
+from api.routers import emails, search
 
 # force=True installs a fresh stderr handler even though the Cloud Run/uvicorn
 # runtime configures the root logger first (otherwise basicConfig no-ops and the
@@ -15,4 +15,3 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message
 app = FastAPI(title="inbox-api")
 app.include_router(search.router)
 app.include_router(emails.router)
-app.include_router(redirect.router)
