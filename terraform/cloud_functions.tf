@@ -246,7 +246,7 @@ resource "google_cloudfunctions2_function" "process" {
       OTEL_BSP_MAX_QUEUE_SIZE   = "16384"
       OTEL_BSP_SCHEDULE_DELAY   = "2000"
       OTEL_BSP_EXPORT_TIMEOUT   = "30000"
-      REDIRECTOR_BASE_URL       = google_cloud_run_v2_service.api.uri
+      REDIRECTOR_BASE_URL       = google_cloud_run_v2_service.redirect.uri
       PEOPLE_API_URL            = var.people_api_url
     }
     secret_environment_variables {

@@ -44,3 +44,10 @@ jobs:
             --image us-central1-docker.pkg.dev/bens-project-462804/inbox/inbox-api:latest \
             --region us-central1 \
             --project bens-project-462804
+
+      - name: Deploy inbox-redirect (same image)
+        run: |
+          gcloud run deploy inbox-redirect \
+            --image us-central1-docker.pkg.dev/bens-project-462804/inbox/inbox-api:latest \
+            --region us-central1 \
+            --project bens-project-462804
