@@ -72,13 +72,6 @@ resource "google_secret_manager_secret_version" "graph_sent_subscription_id" {
   }
 }
 
-# Owned by the people repo's terraform (github.com/bdrolet/people); inbox-process
-# reads it to call people-api for sender context. People grants our SA accessor.
-data "google_secret_manager_secret" "people_api_token" {
-  secret_id = "people-api-token"
-  project   = var.project_id
-}
-
 # ntfy-token and ntfy-password were created outside Terraform — reference as data sources
 data "google_secret_manager_secret" "ntfy_token" {
   secret_id = "ntfy-token"

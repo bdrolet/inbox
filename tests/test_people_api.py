@@ -20,7 +20,7 @@ class Resp:
 @pytest.fixture
 def env(monkeypatch):
     monkeypatch.setenv("PEOPLE_API_URL", "https://people.example")
-    monkeypatch.setenv("PEOPLE_API_TOKEN", "t0k")
+    monkeypatch.setattr(people_api.gcp_auth, "id_token_for", lambda aud: f"tok-for-{aud}")
 
 
 def test_hit_returns_the_four_keys(monkeypatch, env):
@@ -49,7 +49,10 @@ def test_hit_returns_the_four_keys(monkeypatch, env):
         "notes": None,
     }
     assert seen["url"] == "https://people.example/people/a@x.com"
-    assert seen["headers"] == {"Authorization": "Bearer t0k"} and seen["timeout"] == 2
+    assert (
+        seen["headers"] == {"Authorization": "Bearer tok-for-https://people.example"}
+        and seen["timeout"] == 2
+    )
 
 
 def test_404_is_none(monkeypatch, env):
