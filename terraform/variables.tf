@@ -110,3 +110,9 @@ variable "deployer_sa" {
   description = "Service account email used by GitHub Actions to deploy (GCP_DEPLOYER_SA secret). Granted AR writer + Cloud Run developer on inbox-api."
   type        = string
 }
+
+variable "api_invoker_users" {
+  description = "Google accounts granted roles/run.invoker on inbox-api (laptop skills, scripts)"
+  type        = list(string)
+  default     = ["ben@drolet.cloud"]
+}
