@@ -58,8 +58,9 @@ resource "google_cloud_run_v2_service" "redirect" {
       args    = ["api.redirect_app:app", "--host", "0.0.0.0", "--port", "8080"]
 
       resources {
+        # Cloud Run rejects < 512Mi with CPU always allocated (the v2 default).
         limits = {
-          memory = "256Mi"
+          memory = "512Mi"
         }
       }
 
