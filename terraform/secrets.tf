@@ -7,7 +7,6 @@ locals {
     "msal-token-cache"           = var.msal_token_cache
     "inbox-db-password"          = var.db_password
     "hf-token"                   = var.hf_token
-    "search-token"               = var.search_token
     "graph-subscription-id"      = var.graph_subscription_id
     "graph-sent-subscription-id" = var.graph_sent_subscription_id
   }
