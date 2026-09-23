@@ -20,7 +20,7 @@ You need a Graph message ID **and its mailbox label**. If you don't have them ye
 ## Auth token
 
 ```bash
-TOKEN=$(grep 'search_token' ~/src/inbox/terraform/terraform.tfvars | grep -o '"[^"]*"' | tr -d '"')
+TOKEN=$(gcloud auth print-identity-token)   # Cloud Run IAM; your gcloud login is the credential
 ```
 
 ## Fetch full email detail

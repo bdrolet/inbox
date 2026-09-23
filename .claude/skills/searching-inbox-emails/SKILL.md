@@ -26,7 +26,7 @@ outbound email endpoints — see [[fetching-inbox-email]] and [[sending-inbox-em
 Read from the inbox project's tfvars (gitignored):
 
 ```bash
-TOKEN=$(grep 'search_token' ~/src/inbox/terraform/terraform.tfvars | grep -o '"[^"]*"' | tr -d '"')
+TOKEN=$(gcloud auth print-identity-token)   # Cloud Run IAM; your gcloud login is the credential
 ```
 
 ## Request

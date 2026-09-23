@@ -1,12 +1,9 @@
 import logging
-import os
-import secrets
 from datetime import datetime
 from typing import Literal
 
 import requests
-from fastapi import APIRouter, Depends, HTTPException, Security
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
 import services.fetching as fetching
@@ -14,18 +11,6 @@ import services.fetching as fetching
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/emails")
-
-_bearer = HTTPBearer(auto_error=False)
-
-
-def _verify_token(credentials: HTTPAuthorizationCredentials | None = Security(_bearer)) -> None:
-    expected = os.environ.get("SEARCH_TOKEN")
-    if not expected:
-        if os.environ.get("K_SERVICE"):
-            raise HTTPException(status_code=503, detail="service misconfigured: no auth token")
-        return
-    if credentials is None or not secrets.compare_digest(credentials.credentials, expected):
-        raise HTTPException(status_code=401)
 
 
 class Recipient(BaseModel):
@@ -196,9 +181,7 @@ def _post_model(p: dict) -> Post:
 
 
 @router.get("/{message_id}", response_model=EmailDetailResponse)
-def get_email(
-    message_id: str, mailbox: str = "me", _: None = Depends(_verify_token)
-) -> EmailDetailResponse:
+def get_email(message_id: str, mailbox: str = "me") -> EmailDetailResponse:
     fetched = _call_graph(fetching.fetch_email, message_id, mailbox=mailbox)
     if fetched is None:
         raise HTTPException(status_code=404, detail="message not found")
@@ -222,9 +205,7 @@ def get_email(
 
 
 @router.get("/{message_id}/attachments", response_model=AttachmentsResponse)
-def get_attachments(
-    message_id: str, mailbox: str = "me", _: None = Depends(_verify_token)
-) -> AttachmentsResponse:
+def get_attachments(message_id: str, mailbox: str = "me") -> AttachmentsResponse:
     raw = _call_graph(fetching.fetch_attachments, message_id, mailbox=mailbox)
 
     return AttachmentsResponse(
@@ -244,7 +225,7 @@ def get_attachments(
 
 
 @router.post("/drafts", response_model=DraftResponse)
-def create_draft(req: CreateDraftRequest, _: None = Depends(_verify_token)) -> DraftResponse:
+def create_draft(req: CreateDraftRequest) -> DraftResponse:
     client = _get_client()
     addr, shared = _from_parts(req.from_)
     created = _call_graph(
@@ -262,9 +243,7 @@ def create_draft(req: CreateDraftRequest, _: None = Depends(_verify_token)) -> D
 
 
 @router.post("/drafts/{draft_id}/attachments", response_model=StatusResponse)
-def add_attachment(
-    draft_id: str, req: AddAttachmentRequest, _: None = Depends(_verify_token)
-) -> StatusResponse:
+def add_attachment(draft_id: str, req: AddAttachmentRequest) -> StatusResponse:
     client = _get_client()
     addr, shared = _from_parts(req.from_)
     _call_graph(
@@ -281,9 +260,7 @@ def add_attachment(
 
 
 @router.post("/drafts/{draft_id}/send", response_model=StatusResponse)
-def send_draft(
-    draft_id: str, req: SendDraftRequest | None = None, _: None = Depends(_verify_token)
-) -> StatusResponse:
+def send_draft(draft_id: str, req: SendDraftRequest | None = None) -> StatusResponse:
     client = _get_client()
     addr, shared = _from_parts(req.from_ if req else None)
     _call_graph(client.send_draft, draft_id, from_address=addr, from_shared=shared)
@@ -291,7 +268,7 @@ def send_draft(
 
 
 @router.post("/send", response_model=StatusResponse)
-def send_message(req: SendMessageRequest, _: None = Depends(_verify_token)) -> StatusResponse:
+def send_message(req: SendMessageRequest) -> StatusResponse:
     client = _get_client()
     addr, shared = _from_parts(req.from_)
     _call_graph(
