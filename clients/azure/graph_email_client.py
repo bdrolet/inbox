@@ -773,6 +773,60 @@ class GraphEmailClient:
         response.raise_for_status()
         logger.info("Sent message to %s (base=%s)", to, base)
 
+    def reply(
+        self,
+        message_id: str,
+        *,
+        comment: str,
+        reply_all: bool = False,
+        send: bool = True,
+        from_address: str | None = None,
+        from_shared: bool = False,
+    ) -> dict | None:
+        """Reply to an existing message, threaded. Requires Mail.Send (send) or
+        Mail.ReadWrite (draft).
+
+        Uses Graph's reply/replyAll (send=True) or createReply/createReplyAll
+        (send=False) actions with `comment`, so Graph addresses the reply, sets
+        the threading headers, and keeps the quoted history below the comment —
+        unlike composing a fresh message with a matching subject.
+
+        Returns None when sent; the draft dict (`id`, `webLink`) when send=False.
+
+        Raises:
+            LookupError: the message does not exist (Graph 404).
+            requests.HTTPError: any other Graph error.
+        """
+        base = self._mailbox_base(from_address, from_shared)
+        action = "replyAll" if reply_all else "reply"
+        if not send:
+            action = "create" + action[0].upper() + action[1:]
+        payload: dict = {"comment": comment}
+        if from_address and not from_shared:
+            payload["message"] = {"from": {"emailAddress": {"address": from_address}}}
+        response = requests.post(
+            f"{self.graph_endpoint}{base}/messages/{quote(message_id, safe='')}/{action}",
+            headers=self.get_headers(),
+            json=payload,
+        )
+        if response.status_code == 404:
+            raise LookupError("message not found")
+        response.raise_for_status()
+        if send:
+            logger.info("Sent %s to message %s (base=%s)", action, message_id, base)
+            return None
+
+        draft_id = response.json()["id"]
+        # Fetch webLink explicitly — createReply's response can carry the wrong folder context
+        get_resp = requests.get(
+            f"{self.graph_endpoint}{base}/messages/{draft_id}",
+            headers=self.get_headers(),
+            params={"$select": "id,webLink"},
+        )
+        get_resp.raise_for_status()
+        logger.info("Created %s draft %s for message %s", action, draft_id, message_id)
+        return get_resp.json()
+
     def get_attachments(self, message_id: str, mailbox: str = "me") -> list[dict]:
         """GET {mailbox}/messages/{id}/attachments — returns raw attachment dicts.
 

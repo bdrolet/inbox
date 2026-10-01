@@ -149,3 +149,66 @@ def test_get_attachments_lookup_error_is_404(monkeypatch):
 
     monkeypatch.setattr(fetching, "fetch_attachments", fake)
     assert client.get("/emails/gone/attachments").status_code == 404
+
+
+class _FakeReplyClient:
+    def __init__(self, result=None, exc=None):
+        self.result, self.exc, self.kwargs = result, exc, None
+
+    def reply(self, message_id, **kwargs):
+        self.kwargs = {"message_id": message_id, **kwargs}
+        if self.exc:
+            raise self.exc
+        return self.result
+
+
+def _use_client(monkeypatch, fake):
+    import api.routers.emails as emails
+
+    monkeypatch.setattr(emails, "_get_client", lambda: fake)
+    return fake
+
+
+def test_reply_sends_by_default(monkeypatch):
+    fake = _use_client(monkeypatch, _FakeReplyClient())
+    resp = client.post(
+        "/emails/m1/reply",
+        json={"body": "Sounds great", "from": {"address": "ben@drolet.ai"}},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "sent"
+    assert fake.kwargs == {
+        "message_id": "m1",
+        "comment": "Sounds great",
+        "reply_all": False,
+        "send": True,
+        "from_address": "ben@drolet.ai",
+        "from_shared": False,
+    }
+
+
+def test_reply_draft_returns_id_and_link(monkeypatch):
+    fake = _use_client(
+        monkeypatch, _FakeReplyClient(result={"id": "d1", "webLink": "https://outlook/d1"})
+    )
+    body = client.post(
+        "/emails/m1/reply", json={"body": "hi", "send": False, "reply_all": True}
+    ).json()
+    assert body == {"status": "drafted", "id": "d1", "web_link": "https://outlook/d1"}
+    assert fake.kwargs["send"] is False and fake.kwargs["reply_all"] is True
+
+
+def test_reply_accepts_ids_containing_slash(monkeypatch):
+    fake = _use_client(monkeypatch, _FakeReplyClient())
+    assert client.post("/emails/AA%2FBB%3D/reply", json={"body": "hi"}).status_code == 200
+    assert fake.kwargs["message_id"] == "AA/BB="
+
+
+def test_reply_missing_message_is_404(monkeypatch):
+    _use_client(monkeypatch, _FakeReplyClient(exc=LookupError("message not found")))
+    assert client.post("/emails/gone/reply", json={"body": "hi"}).status_code == 404
+
+
+def test_reply_403_maps_to_403(monkeypatch):
+    _use_client(monkeypatch, _FakeReplyClient(exc=_http_error(403)))
+    assert client.post("/emails/m1/reply", json={"body": "hi"}).status_code == 403
