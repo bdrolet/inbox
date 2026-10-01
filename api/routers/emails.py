@@ -114,6 +114,20 @@ class SendDraftRequest(BaseModel):
     from_: FromMailbox | None = Field(default=None, alias="from")
 
 
+class ReplyRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+    body: str  # sent as Graph's `comment`: placed above the quoted original
+    reply_all: bool = False
+    send: bool = True  # false leaves a threaded draft for review
+    from_: FromMailbox | None = Field(default=None, alias="from")
+
+
+class ReplyResponse(BaseModel):
+    status: Literal["sent", "drafted"]
+    id: str | None = None  # draft id, when drafted
+    web_link: str | None = None
+
+
 class DraftResponse(BaseModel):
     id: str | None = None
     web_link: str | None = None
@@ -265,6 +279,25 @@ def send_draft(draft_id: str, req: SendDraftRequest | None = None) -> StatusResp
     addr, shared = _from_parts(req.from_ if req else None)
     _call_graph(client.send_draft, draft_id, from_address=addr, from_shared=shared)
     return StatusResponse(status="sent")
+
+
+# `:path` because Graph ids can contain "/", which arrives decoded from %2F
+@router.post("/{message_id:path}/reply", response_model=ReplyResponse)
+def reply(message_id: str, req: ReplyRequest) -> ReplyResponse:
+    client = _get_client()
+    addr, shared = _from_parts(req.from_)
+    draft = _call_graph(
+        client.reply,
+        message_id,
+        comment=req.body,
+        reply_all=req.reply_all,
+        send=req.send,
+        from_address=addr,
+        from_shared=shared,
+    )
+    if draft is None:
+        return ReplyResponse(status="sent")
+    return ReplyResponse(status="drafted", id=draft.get("id"), web_link=draft.get("webLink"))
 
 
 @router.post("/send", response_model=StatusResponse)

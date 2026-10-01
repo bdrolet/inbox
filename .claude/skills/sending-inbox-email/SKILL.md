@@ -34,6 +34,25 @@ curl -s -XPOST "$BASE/emails/send" -H "Authorization: Bearer $TOKEN" -H "Content
 
 `body_type` is `"Text"` (default) or `"HTML"`.
 
+## Reply to an existing message (threaded)
+
+**Use this, not `/emails/send` with an `RE:` subject, whenever the user is
+answering a message.** Graph addresses the reply, sets the threading headers,
+and keeps the quoted history below `body`. Get the `message_id` from
+[[searching-inbox-emails]]; URL-encode it for the path.
+
+```bash
+ENC=$(python3 -c "import urllib.parse,sys;print(urllib.parse.quote(sys.argv[1],safe=''))" "$MESSAGE_ID")
+curl -s -XPOST "$BASE/emails/$ENC/reply" -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"body":"Sounds great. See you then.","from":{"address":"alias@drolet.ai","shared":false}}'
+# -> {"status":"sent"}
+```
+
+Optional: `"reply_all": true`; `"send": false` leaves a threaded draft and
+returns `{"status":"drafted","id":"...","web_link":"..."}` — send it with
+`/emails/drafts/{id}/send` below. `from` follows the identity table below;
+reply from the address the user used on the thread.
+
 ## Draft, then send (when the user wants to review first)
 
 ```bash
