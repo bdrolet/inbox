@@ -71,8 +71,8 @@ def build_prompt(
         responded = sender_ctx.get("my_response_count") or 0
         history = f"{responded}/{total} replied" if total > 0 else "no history"
         parts.append(f"Sender history: {history}")
-        if sender_ctx.get("relationship_label"):
-            parts.append(f"Relationship: {sender_ctx['relationship_label']}")
+        if sender_ctx.get("labels"):
+            parts.append(f"Labels: {', '.join(sender_ctx['labels'])}")
         if sender_ctx.get("notes"):
             parts.append(f"Notes: {sender_ctx['notes']}")
 
