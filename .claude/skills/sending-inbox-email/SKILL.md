@@ -18,8 +18,9 @@ Outbound email via the `inbox-api` Cloud Run service (Microsoft Graph under the 
 
 ## Rough requests go through the email-builder agent
 
-"Email Alice that Thursday works", "reply to the landlord about the lease":
-anything where recipients, wording, or the thread must be worked out. Spawn
+New messages ("email Alice that Thursday works") and replies ("reply to the
+landlord about the lease") alike: anything where recipients, wording, or the
+thread must be worked out. Spawn
 the `email-builder` agent (`subagent_type: "email-builder"`). It resolves
 addresses, reads the message being replied to, writes in Ben's voice, and
 leaves an Outlook **draft**. It sends nothing unless told to.

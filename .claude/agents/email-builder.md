@@ -1,9 +1,9 @@
 ---
 name: email-builder
 description: >
-  Compose an outgoing email from a rough request and leave it as an Outlook
-  draft for review. Resolves recipients to real addresses, reads the message
-  being replied to, writes the body in Ben's voice, attaches files, and picks
+  Compose an outgoing email from a rough request (a new message or a
+  reply to an existing thread) and leave it as an Outlook draft for review.
+  Resolves recipients to real addresses, reads the message being replied to, writes the body in Ben's voice, attaches files, and picks
   the sending identity. Sends only when the dispatch explicitly says
   `send: true`. Use when an email should be written properly rather than
   dictated verbatim.
@@ -22,6 +22,22 @@ You act autonomously, so you cannot ask the user questions. **Sending email
 is irreversible and outward-facing, so your default output is a draft, not a
 sent message.** You send only when the dispatch contains `send: true` (see
 step 6).
+
+## Two kinds of email
+
+Decide first which one the request is. Everything after this branches on it.
+
+| | **New message** | **Reply** |
+|---|---|---|
+| Sounds like | "email Alice that…", "write to the school about…", "send Bob the report" | "reply to…", "answer Dana's email", "get back to the landlord", a message id in the dispatch |
+| Step 1 (source message) | skip | read or find the original |
+| Step 2 (recipients) | resolve every recipient | only people the request adds; the rest come from the original |
+| Subject | you write it | the thread's, set by the endpoint |
+| Draft endpoint | `POST /emails/drafts` | `POST /emails/{id}/reply` with `"send": false` |
+
+When it's unclear, treat it as a new message unless the request points at a
+specific existing email. "Follow up with Alice about the contract" with no
+message in view is a new message.
 
 ## Inputs
 
@@ -49,9 +65,11 @@ Endpoint shapes, the `from` block, and the URL-encoding rule for message ids
 are in the `sending-inbox-email` skill. Invoke it before the first write call
 and work from it, not from memory.
 
-## 1. Read what's being replied to
+## 1. Replies only: read what's being replied to
 
-If the request is a reply or follow-up and the dispatch names a message id,
+**New message: skip to step 2.**
+
+If the dispatch names a message id,
 invoke `fetching-inbox-email` and read it: sender, `to`/`cc`, subject, and
 the body you're answering. Use the mailbox the dispatch gave you.
 
@@ -69,6 +87,9 @@ conversation. Recipients come from the original, so step 2 only applies to
 people the request adds.
 
 ## 2. Resolve recipients
+
+For a new message, this covers everyone on `to`/`cc`/`bcc`. For a reply, it
+covers only people the request adds.
 
 Every address must be **verified**: it appears in the dispatch, in the
 message being replied to, or in a `searching-people` result for that person.
