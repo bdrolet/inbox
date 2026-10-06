@@ -1,19 +1,62 @@
 ---
 name: sending-inbox-email
-version: 1.0.0
+version: 1.1.0
 description: >
   Use when the user wants to compose, draft, or send an email — write a new message,
   "draft a reply", "create a draft", "send an email to X", "email Y about Z", reply
   to someone, or attach a file to an outgoing message. Sends from the primary mailbox
-  or from an alias, M365 group, or shared mailbox. Does not search or read existing
+  or from an alias, M365 group, or shared mailbox. Rough requests dispatch the
+  email-builder agent, which drafts for review. Does not search or read existing
   mail — use searching-inbox-emails / fetching-inbox-email for that.
 metadata:
-  depends-on: "fetching-inbox-email, searching-inbox-emails"
+  depends-on: "email-builder (agent), fetching-inbox-email, searching-inbox-emails, searching-people, matching-writing-style"
 ---
 
 # Sending Inbox Email
 
 Outbound email via the `inbox-api` Cloud Run service (Microsoft Graph under the hood).
+
+## Rough requests go through the email-builder agent
+
+New messages ("email Alice that Thursday works") and replies ("reply to the
+landlord about the lease") alike: anything where recipients, wording, or the
+thread must be worked out. Spawn
+the `email-builder` agent (`subagent_type: "email-builder"`). It resolves
+addresses, reads the message being replied to, writes in Ben's voice, and
+leaves an Outlook **draft**. It sends nothing unless told to.
+
+The agent starts blank and can't see this conversation. Pass it:
+
+- the request in the user's own words
+- the Graph message id being replied to, and its mailbox, if one is on screen
+- people named earlier, with addresses if you already have them
+- file paths to attach
+- an identity to send from, if the user named one
+- `send: true` **only** if the user explicitly said to send without
+  reviewing first ("just send it", "no need to show me"). "Email X" alone
+  means draft.
+- today's date
+
+Don't research first. That's the agent's job.
+
+**Relay** what it returns:
+
+- **`DRAFTED`**: show from/to/cc/subject/attachments and the full body, plus
+  any `Assumptions`, then ask: *send it, change it, or leave it in Drafts?*
+  - *send*: send the draft yourself (`POST /emails/drafts/{id}/send`, below,
+    with the same `from` block). No re-dispatch.
+  - *change*: small wording edits, re-dispatch with `draft_id` and the
+    changes; the agent creates a new draft and reports the old one's id.
+  - *leave it*: done; give the `web_link`.
+- **`SENT`**: say plainly that it went out and to whom.
+- **`RECIPIENT_UNRESOLVED`** / **`AMBIGUOUS`**: show the candidates, ask
+  which one, and re-dispatch with that address or message id.
+- **Failure**: relay the error and what exists now (e.g. a draft missing an
+  attachment).
+
+**Skip the agent** when the user dictated the exact recipients, subject, and
+body. Use the API below directly. Still confirm before `/emails/send`
+unless the user already said to send.
 
 ## Auth token
 
@@ -87,4 +130,4 @@ Aliases/groups operate on the primary mailbox and stamp the `from`; shared mailb
 ## Notes
 
 - Attachments ≥ 3 MB are rejected (`400`) — large-file upload isn't supported yet.
-- To reply to a found message, get its recipients/subject via [[fetching-inbox-email]] first, then compose here.
+- To reply to a found message, use the threaded reply endpoint above; read it first via [[fetching-inbox-email]] if you need its content.
