@@ -1,6 +1,6 @@
 """Client for the people-api Cloud Run service (github.com/bdrolet/people).
 Sender context for the classification prompt: message_count,
-my_response_count, relationship_label, notes. Fail-open — any problem
+my_response_count, labels (the sender's Google Contacts labels), notes. Fail-open — any problem
 returns None and the pipeline classifies without sender context. Hot path,
 so a hard 2 s timeout."""
 
@@ -16,7 +16,7 @@ from clients import gcp_auth
 logger = logging.getLogger(__name__)
 
 TIMEOUT_S = 2
-_KEYS = ("message_count", "my_response_count", "relationship_label", "notes")
+_KEYS = ("message_count", "my_response_count", "labels", "notes")
 
 
 def get_person(email: str) -> dict | None:

@@ -61,13 +61,19 @@ def test_build_prompt_with_sender_context():
     sender_ctx = {
         "message_count": 10,
         "my_response_count": 4,
-        "relationship_label": "colleague",
+        "labels": ["colleague", "Climbing"],
         "notes": "direct manager",
     }
     _, user = build_prompt(_BASE_MSG, {}, [], sender_ctx)
     assert "4/10 replied" in user
-    assert "colleague" in user
+    assert "Labels: colleague, Climbing" in user
     assert "direct manager" in user
+
+
+def test_build_prompt_omits_labels_line_when_none():
+    sender_ctx = {"message_count": 1, "my_response_count": 0, "labels": [], "notes": None}
+    _, user = build_prompt(_BASE_MSG, {}, [], sender_ctx)
+    assert "Labels:" not in user
 
 
 def test_build_prompt_with_neighbors():

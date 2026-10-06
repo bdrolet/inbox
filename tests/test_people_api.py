@@ -34,6 +34,7 @@ def test_hit_returns_the_four_keys(monkeypatch, env):
                 "email": "a@x.com",
                 "message_count": 3,
                 "my_response_count": 1,
+                "labels": ["Family", "investor"],
                 "relationship_label": "family",
                 "notes": None,
                 "eligible": True,
@@ -45,7 +46,7 @@ def test_hit_returns_the_four_keys(monkeypatch, env):
     assert out == {
         "message_count": 3,
         "my_response_count": 1,
-        "relationship_label": "family",
+        "labels": ["Family", "investor"],
         "notes": None,
     }
     assert seen["url"] == "https://people.example/people/a@x.com"
