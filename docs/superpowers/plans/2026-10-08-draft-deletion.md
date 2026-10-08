@@ -91,7 +91,9 @@ def _fake_graph(monkeypatch, *, get_status=200, get_json=None, delete_status=204
 
     def fake_get(url, headers=None, params=None):
         seen["get"].append((url, params))
-        return _Resp(get_status, get_json if get_json is not None else {"id": "d1", "isDraft": True})
+        return _Resp(
+            get_status, get_json if get_json is not None else {"id": "d1", "isDraft": True}
+        )
 
     def fake_delete(url, headers=None):
         seen["delete"].append(url)
