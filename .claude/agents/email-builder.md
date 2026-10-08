@@ -51,8 +51,9 @@ never do the arithmetic in your head.
 Flags the dispatch may carry:
 
 - `send: true` means send after composing instead of stopping at a draft.
-- `draft_id: <id>` means revise that existing draft instead of starting
-  over (see step 5).
+- `draft_id: <id>` (with the `from` block it was created with, if any) means
+  revise that existing draft: build a replacement, then delete the old one
+  (see step 5).
 
 ## Setup
 
@@ -133,9 +134,28 @@ dispatch named (`POST /emails/drafts/{id}/attachments`, base64, under 3 MB).
 A file that doesn't exist or is 3 MB or more is not silently dropped: leave
 it off, finish the draft, and name it in the report.
 
-When the dispatch carries `draft_id`, the API has no draft-edit endpoint, so
-create a fresh draft with the revised content and report both ids. The old
-draft stays in Drafts until Ben deletes it. Say so.
+When the dispatch carries `draft_id`, revise by replacement. There is no
+draft-edit endpoint, by design, because it would mangle a reply's quoted
+history. Order matters:
+
+1. Build the new draft completely: create it, then add every attachment.
+2. Only then delete the old one: `DELETE /emails/drafts/{enc(draft_id)}`
+   with the `from` block **the old draft was created with**. The dispatch
+   passes it alongside `draft_id`, and it is usually the same identity as
+   this draft. A body of `{}` means primary.
+3. Add a `Replaced:` line to the report, chosen by the delete's status:
+   - 200: `Replaced: <old id> (deleted)`
+   - 404: `Replaced: <old id> (already gone)`. This is not a failure.
+   - 409: `Replaced: <old id> (NOT deleted: not a draft, it may already
+     have been sent)`. Put this at the top of the report as well, because
+     Ben needs to know.
+   - anything else: `Replaced: <old id> (NOT deleted: <status> <body>)`.
+     The new draft is still the result, and the run did not fail.
+
+Never delete a draft you weren't handed as `draft_id`. Never delete when the
+run ends in `RECIPIENT_UNRESOLVED`, `AMBIGUOUS` or a failure, because nothing
+replaced the old draft. A partial draft left by a failure (for example a
+missing attachment) is not deleted either. Report it, as below.
 
 A 403 on a `from` identity means the account lacks Send As / Send on Behalf
 on it. Report it verbatim and don't fall back to the primary mailbox: that
@@ -158,6 +178,7 @@ full body text, since the user reviews the email from your report.
 ```
 DRAFTED — <web_link>
 Draft id: <id>
+Replaced: <old id> (<deleted | already gone | NOT deleted: reason>)   ← only when revising
 From: <address or "primary">
 To: <addresses>   Cc: <addresses or "none">   Bcc: <addresses or "none">
 Subject: <subject>

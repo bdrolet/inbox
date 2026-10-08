@@ -1,6 +1,6 @@
 ---
 name: sending-inbox-email
-version: 1.1.0
+version: 1.2.0
 description: >
   Use when the user wants to compose, draft, or send an email — write a new message,
   "draft a reply", "create a draft", "send an email to X", "email Y about Z", reply
@@ -42,12 +42,17 @@ Don't research first. That's the agent's job.
 **Relay** what it returns:
 
 - **`DRAFTED`**: show from/to/cc/subject/attachments and the full body, plus
-  any `Assumptions`, then ask: *send it, change it, or leave it in Drafts?*
+  any `Assumptions`, then ask: *send it, change it, leave it in Drafts, or
+  discard it?*
   - *send*: send the draft yourself (`POST /emails/drafts/{id}/send`, below,
     with the same `from` block). No re-dispatch.
-  - *change*: small wording edits, re-dispatch with `draft_id` and the
-    changes; the agent creates a new draft and reports the old one's id.
+  - *change*: re-dispatch with `draft_id`, the `from` block it was created
+    with, and the changes. The agent builds a new draft and deletes the old
+    one. Relay its `Replaced:` line. On `NOT deleted`, give Ben the old id
+    and say it is still in Drafts.
   - *leave it*: done; give the `web_link`.
+  - *discard*: delete it yourself (**Delete a draft**, below). No
+    re-dispatch.
 - **`SENT`**: say plainly that it went out and to whom.
 - **`RECIPIENT_UNRESOLVED`** / **`AMBIGUOUS`**: show the candidates, ask
   which one, and re-dispatch with that address or message id.
@@ -115,6 +120,21 @@ curl -s -XPOST "$BASE/emails/drafts/$ENC/send" -H "Authorization: Bearer $TOKEN"
 
 **Message IDs contain `/ = +`** — always URL-encode the id for the path (the `ENC` step above). The one-shot `/emails/send` avoids this entirely.
 
+## Delete a draft
+
+```bash
+ENC=$(python3 -c "import urllib.parse,sys;print(urllib.parse.quote(sys.argv[1],safe=''))" "$DRAFT_ID")
+curl -s -XDELETE "$BASE/emails/drafts/$ENC" -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" -d '{}'     # or the draft's "from" block
+# -> {"status":"deleted"}   404 = already gone   409 = not a draft, nothing deleted
+```
+
+Pass the `from` block the draft was created with. A shared-mailbox draft
+deleted without it returns 404, because the lookup runs in the wrong
+mailbox. Deleting a draft Ben said to discard or replace needs no further
+confirmation. The endpoint refuses (409) anything that isn't a draft, so it
+cannot delete received or sent mail.
+
 ## Sending as a different identity
 
 Add a `from` block to any request body:
@@ -130,4 +150,5 @@ Aliases/groups operate on the primary mailbox and stamp the `from`; shared mailb
 ## Notes
 
 - Attachments ≥ 3 MB are rejected (`400`) — large-file upload isn't supported yet.
+- Deleted drafts go to Deleted Items and can be recovered there.
 - To reply to a found message, use the threaded reply endpoint above; read it first via [[fetching-inbox-email]] if you need its content.
