@@ -157,7 +157,7 @@ instead, stop and revisit §3.4 before shipping.
 The endpoint returns 200 with a status body rather than 204 so that every
 outbound endpoint keeps one response shape.
 
-Callers should treat a 404 on a delete as "already gone" and not as an error
+Callers should treat a 404 on a delete as "not in that mailbox" (already gone, or the wrong `from` block) and not as an error
 worth surfacing loudly (§4).
 
 ### 3.6 Permissions
@@ -212,7 +212,7 @@ solves; zero drafts loses Ben's review copy.
 Results of the delete:
 
 - **200** → `Replaced: <id> (deleted)`
-- **404** → `Replaced: <id> (already gone)`. This is not a failure.
+- **404** → `Replaced: <id> (not found in <mailbox>)`. This is not a failure, but it is not reported as "gone" either, because a wrong `from` block also produces it. The `From:` line reports `(shared)` so the dispatcher can pass the block back exactly.
 - **409** → `Replaced: <id> (NOT deleted: not a draft, it may already have
   been sent)`. Surface this prominently, because it means the earlier version
   may have gone out.
@@ -251,7 +251,7 @@ Bump `version` to `1.2.0`.
    ENC=$(python3 -c "import urllib.parse,sys;print(urllib.parse.quote(sys.argv[1],safe=''))" "$DRAFT_ID")
    curl -s -XDELETE "$BASE/emails/drafts/$ENC" -H "Authorization: Bearer $TOKEN" \
      -H "Content-Type: application/json" -d '{}'          # or the draft's "from" block
-   # -> {"status":"deleted"}   404 = already gone   409 = not a draft, nothing deleted
+   # -> {"status":"deleted"}   404 = not in that mailbox   409 = not a draft, nothing deleted
    ```
 
    Add one line of policy: deleting a draft does not need confirmation when
@@ -313,4 +313,4 @@ and reuse this spec's guard.
    Repeat once with a shared-mailbox `from`.
 3. Make the agent and skill edits in §4 in the **same PR**. The skill and the
    endpoint ship together, because before the deploy the agent's DELETE gets
-   404, which it now reports as "already gone". That would be misleading.
+   404, which it reports as "not found". That would be misleading.

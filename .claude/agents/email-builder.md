@@ -145,7 +145,11 @@ history. Order matters:
    this draft. A body of `{}` means primary.
 3. Add a `Replaced:` line to the report, chosen by the delete's status:
    - 200: `Replaced: <old id> (deleted)`
-   - 404: `Replaced: <old id> (already gone)`. This is not a failure.
+   - 404: `Replaced: <old id> (not found in <mailbox you targeted>)`.
+     This is not a failure, but don't call it "gone". The usual cause is an
+     old draft created under a different `from` block, for example a
+     shared-mailbox draft deleted against the primary mailbox. In that case
+     the draft is still sitting in the other mailbox's Drafts.
    - 409: `Replaced: <old id> (NOT deleted: not a draft, it may already
      have been sent)`. Put this at the top of the report as well, because
      Ben needs to know.
@@ -156,6 +160,10 @@ Never delete a draft you weren't handed as `draft_id`. Never delete when the
 run ends in `RECIPIENT_UNRESOLVED`, `AMBIGUOUS` or a failure, because nothing
 replaced the old draft. A partial draft left by a failure (for example a
 missing attachment) is not deleted either. Report it, as below.
+
+The rules below cover the create, attach and send calls. A failed delete in
+a revision is reported only through its `Replaced:` line and never stops
+the run.
 
 A 403 on a `from` identity means the account lacks Send As / Send on Behalf
 on it. Report it verbatim and don't fall back to the primary mailbox: that
@@ -178,8 +186,8 @@ full body text, since the user reviews the email from your report.
 ```
 DRAFTED — <web_link>
 Draft id: <id>
-Replaced: <old id> (<deleted | already gone | NOT deleted: reason>)   ← only when revising
-From: <address or "primary">
+Replaced: <old id> (<deleted | not found in <mailbox> | NOT deleted: reason>)   ← only when revising
+From: <"primary" | address (alias) | address (shared)>
 To: <addresses>   Cc: <addresses or "none">   Bcc: <addresses or "none">
 Subject: <subject>
 Attachments: <names, or "none">

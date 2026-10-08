@@ -47,9 +47,10 @@ Don't research first. That's the agent's job.
   - *send*: send the draft yourself (`POST /emails/drafts/{id}/send`, below,
     with the same `from` block). No re-dispatch.
   - *change*: re-dispatch with `draft_id`, the `from` block it was created
-    with, and the changes. The agent builds a new draft and deletes the old
-    one. Relay its `Replaced:` line. On `NOT deleted`, give Ben the old id
-    and say it is still in Drafts.
+    with (rebuild it from the report's `From:` line: `(shared)` means
+    `"shared": true`), and the changes. The agent builds a new draft and deletes the old
+    one. Relay its `Replaced:` line. On `NOT deleted` or `not found`, give
+    Ben the old id and say it may still be in Drafts.
   - *leave it*: done; give the `web_link`.
   - *discard*: delete it yourself (**Delete a draft**, below). No
     re-dispatch.
@@ -126,12 +127,13 @@ curl -s -XPOST "$BASE/emails/drafts/$ENC/send" -H "Authorization: Bearer $TOKEN"
 ENC=$(python3 -c "import urllib.parse,sys;print(urllib.parse.quote(sys.argv[1],safe=''))" "$DRAFT_ID")
 curl -s -XDELETE "$BASE/emails/drafts/$ENC" -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" -d '{}'     # or the draft's "from" block
-# -> {"status":"deleted"}   404 = already gone   409 = not a draft, nothing deleted
+# -> {"status":"deleted"}   404 = not in that mailbox   409 = not a draft, nothing deleted
 ```
 
 Pass the `from` block the draft was created with. A shared-mailbox draft
 deleted without it returns 404, because the lookup runs in the wrong
-mailbox. Deleting a draft Ben said to discard or replace needs no further
+mailbox. So treat a 404 as "not in that mailbox", not as "gone", and
+re-check the `from` block before telling Ben it's deleted. Deleting a draft Ben said to discard or replace needs no further
 confirmation. The endpoint refuses (409) anything that isn't a draft, so it
 cannot delete received or sent mail.
 
