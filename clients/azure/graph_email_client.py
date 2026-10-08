@@ -749,7 +749,8 @@ class GraphEmailClient:
     ) -> None:
         """Delete a draft by id; refuses anything Graph doesn't report as a draft.
 
-        Soft delete: the draft moves to Deleted Items (not permanentDelete).
+        Soft delete: the draft moves to Recoverable Items (not Deleted Items;
+        not permanentDelete), restorable in Outlook until retention purges it.
         Requires Mail.ReadWrite.
 
         Raises:

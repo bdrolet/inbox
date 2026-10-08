@@ -36,8 +36,8 @@ It also settles the open question: revisions **do not** move to in-place
 
 **Non-goals**
 
-- Permanent deletion. Deleted drafts go to Deleted Items, where they can be
-  recovered (§3.4).
+- Permanent deletion. Deleted drafts go to Recoverable Items, where they can
+  be recovered until retention purges them (§3.4).
 - Deleting received or sent mail, or deleting in bulk.
 - A draft-edit (`PATCH`) endpoint (§5).
 - Removing attachments from a draft.
@@ -130,18 +130,25 @@ on here.
 
 ### 3.4 Delete semantics
 
-`DELETE /messages/{id}` is Graph's normal delete: the item moves to **Deleted
-Items** and can be recovered in Outlook until the retention policy purges it.
-`permanentDelete` is deliberately **not** used. An agent that deletes the
-wrong draft costs Ben a restore from Deleted Items, not lost work.
+`DELETE /messages/{id}` is Graph's normal delete. Verified live on
+2026-10-08: the item does **not** go to Deleted Items. It moves to
+**Recoverable Items → Deletions** (well-known folder
+`recoverableitemsdeletions`), the same place Shift+Delete sends mail in
+Outlook. It is out of sight, but Outlook can restore it through Deleted
+Items → "Recover items deleted from this folder" until the mailbox's
+deleted-item retention purges it. `permanentDelete` is deliberately **not**
+used, because it skips straight to Purges.
 
-One consequence: a deleted draft in Deleted Items still has `isDraft = true`.
-Its id changed when it moved, though, so the id the caller holds now returns
-404. A second DELETE with the same id cannot purge it permanently.
+Ben chose this over moving drafts into Deleted Items (Graph's `move` action
+with `destinationId: "deleteditems"`). The trade is that superseded drafts
+don't clutter Deleted Items, but restoring the wrong one is less obvious. An agent that deletes the wrong
+draft costs Ben a recovery from Recoverable Items within the retention
+window, not lost work.
 
-The implementer should confirm with one manual call against the real mailbox
-that message DELETE soft-deletes for this delegated token. If it hard-deletes
-instead, stop and revisit §3.4 before shipping.
+One consequence: a deleted draft still has `isDraft = true` in
+Recoverable Items. Its id changed when it moved, though, so the id the
+caller holds now returns 404, which was also verified live. A second DELETE
+with the same id cannot purge it.
 
 ### 3.5 Responses
 
@@ -257,8 +264,9 @@ Bump `version` to `1.2.0`.
    Add one line of policy: deleting a draft does not need confirmation when
    Ben said to discard or replace it. Deleting anything else is impossible,
    because the endpoint returns 409.
-4. **Notes.** Add one bullet: deleted drafts go to Deleted Items and can be
-   recovered.
+4. **Notes.** Add one bullet: deleted drafts skip Deleted Items. They go
+   to Recoverable Items, and Outlook restores them via "Recover items
+   deleted from this folder".
 
 ### 4.3 Out of scope
 
@@ -308,7 +316,7 @@ and reuse this spec's guard.
 1. Implement §3 in `clients/azure/graph_email_client.py` and
    `api/routers/emails.py`, with tests. Deploy inbox-api.
 2. Verify against the real mailbox by hand: create a draft, delete it, and
-   confirm it is in Deleted Items (§3.4). Then point DELETE at a received
+   confirm it is in Recoverable Items (§3.4). Then point DELETE at a received
    message id and confirm the response is 409 and the message is untouched.
    Repeat once with a shared-mailbox `from`.
 3. Make the agent and skill edits in §4 in the **same PR**. The skill and the

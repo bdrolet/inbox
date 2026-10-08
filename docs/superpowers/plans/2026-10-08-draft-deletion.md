@@ -188,7 +188,8 @@ Add the method after `send_draft`:
     ) -> None:
         """Delete a draft by id; refuses anything Graph doesn't report as a draft.
 
-        Soft delete: the draft moves to Deleted Items (not permanentDelete).
+        Soft delete: the draft moves to Recoverable Items (not Deleted Items;
+        not permanentDelete), restorable in Outlook until retention purges it.
         Requires Mail.ReadWrite.
 
         Raises:
@@ -457,7 +458,7 @@ cannot delete received or sent mail.
 - [ ] **Step 6: In `sending-inbox-email/SKILL.md` Notes**, add:
 
 ```markdown
-- Deleted drafts go to Deleted Items and can be recovered there.
+- Deleted drafts skip Deleted Items. They go to Recoverable Items, which Outlook reaches via Deleted Items → "Recover items deleted from this folder", until retention purges them.
 ```
 
 - [ ] **Step 7: Verify the edits.** Run `grep -n "no draft-edit endpoint\|until Ben deletes" .claude/agents/email-builder.md`. Expected: no matches, since the stale text is gone. Run `grep -n "1.2.0\|Delete a draft\|discard" .claude/skills/sending-inbox-email/SKILL.md`. Expected: all three present.
@@ -475,7 +476,7 @@ git commit -m "feat(email-builder): delete superseded drafts; skill gains discar
 
 This writes to the real mailbox, so it is not part of automated execution. Run it after the inbox-api deploy from `main` and record the results on the PR. Use the shared-mailbox address Ben chooses.
 
-- [ ] **Step 1:** Create a draft with `POST /emails/drafts` (to self, subject `delete-test`). Then call `DELETE /emails/drafts/{enc(id)}` and expect `{"status":"deleted"}`. In Outlook, confirm the draft is in **Deleted Items** and not purged (spec §3.4). If it was purged, stop and reopen the spec.
+- [ ] **Step 1:** Create a draft with `POST /emails/drafts` (to self, subject `delete-test`). Then call `DELETE /emails/drafts/{enc(id)}` and expect `{"status":"deleted"}`. Confirm the draft is in **Recoverable Items** (`recoverableitemsdeletions`) and not purged (spec §3.4). Done 2026-10-08: confirmed.
 - [ ] **Step 2:** Pick a received message id from `searching-inbox-emails` and call DELETE on it. Expect **409**, and confirm the message is still in place.
 - [ ] **Step 3:** Repeat step 1's DELETE on the same id. Expect **404**.
 - [ ] **Step 4:** Repeat step 1 with a shared-mailbox `from` on both the create and the delete. Expect deletion from that mailbox's Drafts.

@@ -152,5 +152,5 @@ Aliases/groups operate on the primary mailbox and stamp the `from`; shared mailb
 ## Notes
 
 - Attachments ≥ 3 MB are rejected (`400`) — large-file upload isn't supported yet.
-- Deleted drafts go to Deleted Items and can be recovered there.
+- Deleted drafts skip Deleted Items. They go to Recoverable Items, which Outlook reaches via Deleted Items → "Recover items deleted from this folder", until retention purges them.
 - To reply to a found message, use the threaded reply endpoint above; read it first via [[fetching-inbox-email]] if you need its content.
