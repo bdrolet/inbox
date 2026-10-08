@@ -66,6 +66,10 @@ def prune_secret_versions(
         return 0
 
 
+class NotADraftError(Exception):
+    """Refused to delete a message whose Graph isDraft is not true."""
+
+
 class GraphEmailClient:
     def __init__(self):
         self.client_id = os.getenv("CLIENT_ID")
@@ -735,6 +739,39 @@ class GraphEmailClient:
         )
         response.raise_for_status()
         logger.info("Sent draft %s (base=%s)", message_id, base)
+
+    def delete_draft(
+        self,
+        message_id: str,
+        *,
+        from_address: str | None = None,
+        from_shared: bool = False,
+    ) -> None:
+        """Delete a draft by id; refuses anything Graph doesn't report as a draft.
+
+        Soft delete: the draft moves to Deleted Items (not permanentDelete).
+        Requires Mail.ReadWrite.
+
+        Raises:
+            LookupError: no such message in the resolved mailbox (Graph 404).
+            NotADraftError: the message exists but isDraft is not true.
+            requests.HTTPError: any other Graph error.
+        """
+        base = self._mailbox_base(from_address, from_shared)
+        url = f"{self.graph_endpoint}{base}/messages/{quote(message_id, safe='')}"
+        check = requests.get(url, headers=self.get_headers(), params={"$select": "id,isDraft"})
+        if check.status_code == 404:
+            raise LookupError("draft not found")
+        check.raise_for_status()
+        if check.json().get("isDraft") is not True:
+            logger.info("Refused to delete non-draft %s (base=%s)", message_id, base)
+            raise NotADraftError("message is not a draft; refusing to delete")
+
+        response = requests.delete(url, headers=self.get_headers())
+        if response.status_code == 404:
+            raise LookupError("draft not found")
+        response.raise_for_status()
+        logger.info("Deleted draft %s (base=%s)", message_id, base)
 
     def send_message(
         self,
