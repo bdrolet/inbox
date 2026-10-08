@@ -753,14 +753,16 @@ class GraphEmailClient:
         Requires Mail.ReadWrite.
 
         Raises:
-            LookupError: no such message in the resolved mailbox (Graph 404).
+            LookupError: no such message in the resolved mailbox (Graph 404, or
+                400 for a malformed id).
             NotADraftError: the message exists but isDraft is not true.
             requests.HTTPError: any other Graph error.
         """
         base = self._mailbox_base(from_address, from_shared)
         url = f"{self.graph_endpoint}{base}/messages/{quote(message_id, safe='')}"
         check = requests.get(url, headers=self.get_headers(), params={"$select": "id,isDraft"})
-        if check.status_code == 404:
+        # 400 is Graph's ErrorInvalidIdMalformed: no message can have that id
+        if check.status_code in (400, 404):
             raise LookupError("draft not found")
         check.raise_for_status()
         if check.json().get("isDraft") is not True:

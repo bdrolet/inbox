@@ -102,3 +102,10 @@ def test_delete_draft_quotes_id_in_both_urls(monkeypatch):
     _client().delete_draft("AA/B+C=")
     assert seen["get"][0][0] == f"{GRAPH}/me/messages/AA%2FB%2BC%3D"
     assert seen["delete"] == [f"{GRAPH}/me/messages/AA%2FB%2BC%3D"]
+
+
+def test_delete_draft_malformed_id_is_lookup_error(monkeypatch):
+    seen = _fake_graph(monkeypatch, get_status=400)
+    with pytest.raises(LookupError):
+        _client().delete_draft("not-a-graph-id")
+    assert seen["delete"] == []
