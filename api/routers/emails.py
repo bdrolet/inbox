@@ -7,6 +7,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
 import services.fetching as fetching
+from clients.azure.graph_email_client import NotADraftError
 
 logger = logging.getLogger(__name__)
 
@@ -114,6 +115,11 @@ class SendDraftRequest(BaseModel):
     from_: FromMailbox | None = Field(default=None, alias="from")
 
 
+class DeleteDraftRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+    from_: FromMailbox | None = Field(default=None, alias="from")
+
+
 class ReplyRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
     body: str  # sent as Graph's `comment`: placed above the quoted original
@@ -148,10 +154,13 @@ def _call_graph(fn, *args, **kwargs):
 
     Graph 403 (permission) surfaces as 403 with Graph's detail; other Graph errors
     as 502; client-side validation errors (e.g. attachment too large) as 400;
-    not-found (LookupError) as 404; auth failure (RuntimeError) as 503.
+    not-found (LookupError) as 404; not a draft (NotADraftError) as 409; auth
+    failure (RuntimeError) as 503.
     """
     try:
         return fn(*args, **kwargs)
+    except NotADraftError as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     except (KeyError, IndexError):
@@ -279,6 +288,15 @@ def send_draft(draft_id: str, req: SendDraftRequest | None = None) -> StatusResp
     addr, shared = _from_parts(req.from_ if req else None)
     _call_graph(client.send_draft, draft_id, from_address=addr, from_shared=shared)
     return StatusResponse(status="sent")
+
+
+# `:path` because Graph ids can contain "/", which arrives decoded from %2F
+@router.delete("/drafts/{draft_id:path}", response_model=StatusResponse)
+def delete_draft(draft_id: str, req: DeleteDraftRequest | None = None) -> StatusResponse:
+    client = _get_client()
+    addr, shared = _from_parts(req.from_ if req else None)
+    _call_graph(client.delete_draft, draft_id, from_address=addr, from_shared=shared)
+    return StatusResponse(status="deleted")
 
 
 # `:path` because Graph ids can contain "/", which arrives decoded from %2F
