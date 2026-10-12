@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 import services.fetching as fetching
 from api.main import app
 from clients.azure.email import Email
+from clients.azure.graph_email_client import NotADraftError
 
 client = TestClient(app)
 
@@ -212,3 +213,65 @@ def test_reply_missing_message_is_404(monkeypatch):
 def test_reply_403_maps_to_403(monkeypatch):
     _use_client(monkeypatch, _FakeReplyClient(exc=_http_error(403)))
     assert client.post("/emails/m1/reply", json={"body": "hi"}).status_code == 403
+
+
+class _FakeDeleteClient:
+    def __init__(self, exc=None):
+        self.exc, self.kwargs = exc, None
+
+    def delete_draft(self, message_id, **kwargs):
+        self.kwargs = {"message_id": message_id, **kwargs}
+        if self.exc:
+            raise self.exc
+
+
+def test_delete_draft_without_body_uses_primary(monkeypatch):
+    fake = _use_client(monkeypatch, _FakeDeleteClient())
+    resp = client.delete("/emails/drafts/d1")
+    assert resp.status_code == 200
+    assert resp.json() == {"status": "deleted"}
+    assert fake.kwargs == {"message_id": "d1", "from_address": None, "from_shared": False}
+
+
+def test_delete_draft_forwards_from_block(monkeypatch):
+    fake = _use_client(monkeypatch, _FakeDeleteClient())
+    resp = client.request(
+        "DELETE",
+        "/emails/drafts/d1",
+        json={"from": {"address": "shared@x.com", "shared": True}},
+    )
+    assert resp.status_code == 200
+    assert fake.kwargs == {"message_id": "d1", "from_address": "shared@x.com", "from_shared": True}
+
+
+def test_delete_draft_accepts_ids_containing_slash(monkeypatch):
+    fake = _use_client(monkeypatch, _FakeDeleteClient())
+    assert client.delete("/emails/drafts/AA%2FBB%3D").status_code == 200
+    assert fake.kwargs["message_id"] == "AA/BB="
+
+
+def test_delete_draft_missing_is_404(monkeypatch):
+    _use_client(monkeypatch, _FakeDeleteClient(exc=LookupError("draft not found")))
+    resp = client.delete("/emails/drafts/gone")
+    assert resp.status_code == 404
+    assert resp.json()["detail"] == "draft not found"
+
+
+def test_delete_draft_non_draft_is_409(monkeypatch):
+    _use_client(
+        monkeypatch,
+        _FakeDeleteClient(exc=NotADraftError("message is not a draft; refusing to delete")),
+    )
+    resp = client.delete("/emails/drafts/m1")
+    assert resp.status_code == 409
+    assert "not a draft" in resp.json()["detail"]
+
+
+def test_delete_draft_403_maps_to_403(monkeypatch):
+    _use_client(monkeypatch, _FakeDeleteClient(exc=_http_error(403)))
+    assert client.delete("/emails/drafts/d1").status_code == 403
+
+
+def test_delete_draft_other_graph_error_is_502(monkeypatch):
+    _use_client(monkeypatch, _FakeDeleteClient(exc=_http_error(500)))
+    assert client.delete("/emails/drafts/d1").status_code == 502
