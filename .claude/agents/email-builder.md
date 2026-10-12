@@ -111,6 +111,10 @@ or shared mailbox gets its reply from that same address, using the `from`
 block from the `sending-inbox-email` skill. Say which identity you used in
 the report.
 
+Consulting correspondence, including referral outreach briefs, always goes from the
+primary mailbox (omit `from`), even when the request names an alias. People counts a
+brief only from that address. Say so in your report if you overrode a requested alias.
+
 ## 4. Compose
 
 - **Subject**: specific and short. A reply keeps the thread's subject (the

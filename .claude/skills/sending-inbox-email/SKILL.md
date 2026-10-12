@@ -147,6 +147,11 @@ Add a `from` block to any request body:
 | Alias **or** M365 group | `"from":{"address":"alias@drolet.cloud","shared":false}` |
 | Shared mailbox | `"from":{"address":"shared@drolet.cloud","shared":true}` |
 
+**Consulting and referral outreach go from the primary mailbox: omit `from`.** The
+people service counts a sent note as a referral brief only when it comes from the
+primary address (its `OUTREACH_FROM_ADDRESSES`); a brief sent from an alias stays
+uncounted and shows up as unsent in `outreach queue`.
+
 Aliases/groups operate on the primary mailbox and stamp the `from`; shared mailboxes target the mailbox's own Drafts. **Prerequisite:** the account needs Exchange **Send As / Send on Behalf** on that alias/group/shared mailbox (and Full Access for shared) — otherwise the API returns **403** with Graph's error detail.
 
 ## Notes
