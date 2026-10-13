@@ -1,4 +1,5 @@
 import logging
+import os
 from datetime import datetime
 from typing import Literal
 
@@ -144,8 +145,14 @@ class StatusResponse(BaseModel):
 
 
 def _from_parts(from_: FromMailbox | None) -> tuple[str | None, bool]:
-    if from_ is None:
-        return None, False
+    """Resolve a request's `from` block to (address, shared).
+
+    With no address given, DEFAULT_FROM_ADDRESS (when set) is stamped as an alias
+    send on the primary mailbox, so mail goes out from it rather than from the
+    mailbox's own primary SMTP address.
+    """
+    if from_ is None or not from_.address:
+        return os.environ.get("DEFAULT_FROM_ADDRESS", "").strip() or None, False
     return from_.address, from_.shared
 
 

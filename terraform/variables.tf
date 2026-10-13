@@ -100,6 +100,12 @@ variable "shared_mailboxes" {
   default     = ""
 }
 
+variable "default_from_address" {
+  description = "Address inbox-api sends from when a request omits `from` — stamped as an alias on the primary mailbox. Empty: the mailbox's primary SMTP address."
+  type        = string
+  default     = ""
+}
+
 variable "deployer_sa" {
   description = "Service account email used by GitHub Actions to deploy (GCP_DEPLOYER_SA secret). Granted AR writer + Cloud Run developer on inbox-api."
   type        = string

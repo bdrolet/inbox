@@ -54,5 +54,6 @@ jobs:
           TF_VAR_people_api_url: ${{ vars.PEOPLE_API_URL }}
           TF_VAR_hf_token: ${{ secrets.TF_VAR_HF_TOKEN }}
           TF_VAR_shared_mailboxes: ${{ vars.SHARED_MAILBOXES }}
+          TF_VAR_default_from_address: ${{ vars.DEFAULT_FROM_ADDRESS }}
           TF_VAR_deployer_sa: ${{ secrets.GCP_DEPLOYER_SA }}
         run: terraform apply -auto-approve

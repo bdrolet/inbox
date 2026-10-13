@@ -275,3 +275,36 @@ def test_delete_draft_403_maps_to_403(monkeypatch):
 def test_delete_draft_other_graph_error_is_502(monkeypatch):
     _use_client(monkeypatch, _FakeDeleteClient(exc=_http_error(500)))
     assert client.delete("/emails/drafts/d1").status_code == 502
+
+
+def test_omitted_from_uses_default_from_address(monkeypatch):
+    monkeypatch.setenv("DEFAULT_FROM_ADDRESS", "default@example.com")
+    fake = _use_client(monkeypatch, _FakeReplyClient())
+    assert client.post("/emails/m1/reply", json={"body": "hi"}).status_code == 200
+    assert fake.kwargs["from_address"] == "default@example.com"
+    assert fake.kwargs["from_shared"] is False
+
+
+def test_from_without_address_uses_default_from_address(monkeypatch):
+    monkeypatch.setenv("DEFAULT_FROM_ADDRESS", "default@example.com")
+    fake = _use_client(monkeypatch, _FakeReplyClient())
+    client.post("/emails/m1/reply", json={"body": "hi", "from": {}})
+    assert fake.kwargs["from_address"] == "default@example.com"
+
+
+def test_explicit_from_overrides_default_from_address(monkeypatch):
+    monkeypatch.setenv("DEFAULT_FROM_ADDRESS", "default@example.com")
+    fake = _use_client(monkeypatch, _FakeReplyClient())
+    client.post(
+        "/emails/m1/reply",
+        json={"body": "hi", "from": {"address": "shared@x.com", "shared": True}},
+    )
+    assert fake.kwargs["from_address"] == "shared@x.com"
+    assert fake.kwargs["from_shared"] is True
+
+
+def test_blank_default_from_address_sends_from_primary(monkeypatch):
+    monkeypatch.setenv("DEFAULT_FROM_ADDRESS", "  ")
+    fake = _use_client(monkeypatch, _FakeReplyClient())
+    client.post("/emails/m1/reply", json={"body": "hi"})
+    assert fake.kwargs["from_address"] is None
