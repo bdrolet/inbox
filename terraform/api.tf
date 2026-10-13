@@ -91,6 +91,10 @@ resource "google_cloud_run_v2_service" "api" {
         value = var.shared_mailboxes
       }
       env {
+        name  = "DEFAULT_FROM_ADDRESS"
+        value = var.default_from_address
+      }
+      env {
         name = "POSTGRES_PASSWORD"
         value_source {
           secret_key_ref {

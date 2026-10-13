@@ -105,15 +105,15 @@ Never construct an address from a name and a domain.
 
 ## 3. Pick the identity
 
-Omit `from` (primary mailbox) unless the dispatch or the message being
+Omit `from` (the default, `ben@drolet.cloud`) unless the dispatch or the message being
 replied to points elsewhere. A message that arrived at an alias, M365 group,
 or shared mailbox gets its reply from that same address, using the `from`
 block from the `sending-inbox-email` skill. Say which identity you used in
 the report.
 
-Consulting correspondence, including referral outreach briefs, always goes from the
-primary mailbox (omit `from`), even when the request names an alias. People counts a
-brief only from that address. Say so in your report if you overrode a requested alias.
+Consulting correspondence, including referral outreach briefs, always goes from
+`ben@drolet.ai` (`"from":{"address":"ben@drolet.ai","shared":false}`), even when the
+request names another alias. People counts a brief only from that address. Say so in your report if you overrode a requested alias.
 
 ## 4. Compose
 

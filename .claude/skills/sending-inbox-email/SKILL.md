@@ -143,14 +143,19 @@ Add a `from` block to any request body:
 
 | Identity | `from` block |
 |---|---|
-| Primary mailbox (default) | omit `from` |
+| Default (`ben@drolet.cloud`, on the primary mailbox) | omit `from` |
 | Alias **or** M365 group | `"from":{"address":"alias@drolet.cloud","shared":false}` |
 | Shared mailbox | `"from":{"address":"shared@drolet.cloud","shared":true}` |
 
-**Consulting and referral outreach go from the primary mailbox: omit `from`.** The
-people service counts a sent note as a referral brief only when it comes from the
-primary address (its `OUTREACH_FROM_ADDRESSES`); a brief sent from an alias stays
-uncounted and shows up as unsent in `outreach queue`.
+Omitting `from` sends as inbox-api's `DEFAULT_FROM_ADDRESS` (`ben@drolet.cloud`), stamped
+as an alias on the primary mailbox. Without that setting Graph would use the mailbox's
+primary SMTP address, `ben@drolet.ai`.
+
+**Consulting and referral outreach go from `ben@drolet.ai`:**
+`"from":{"address":"ben@drolet.ai","shared":false}`. Everything else uses the default.
+The people service counts a sent note as a referral brief only when it comes from
+`ben@drolet.ai` (its `OUTREACH_FROM_ADDRESSES`); a brief sent from the default or any
+other alias stays uncounted and shows up as unsent in `outreach queue`.
 
 Aliases/groups operate on the primary mailbox and stamp the `from`; shared mailboxes target the mailbox's own Drafts. **Prerequisite:** the account needs Exchange **Send As / Send on Behalf** on that alias/group/shared mailbox (and Full Access for shared) — otherwise the API returns **403** with Graph's error detail.
 
