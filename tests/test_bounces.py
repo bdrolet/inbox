@@ -165,10 +165,12 @@ def test_microsoftexchange_sender_is_ndr():
 
 def test_addr_regex_stops_at_glued_text():
     body = "Sender Address: ben@example.comRecipient Address: cto@acme.com"
-    # A glued occurrence is a miss, never a wrong hit like "ben@example.comrecipient".
-    assert [m.group(0) for m in bounces._ADDR_RE.finditer(body)] == ["cto@acme.com"]
+    # Glue onto a following word character is a miss, never a wrong hit.
+    assert [m.group(0) for m in bounces._ADDR_RE.finditer("cto@acme.comwasn't found")] == []
+    # Capitalised glue still matches ("ben@example.comRecipient"); the
+    # anchored "Sender Address:" label keeps it out of the result.
     msg = {
-        "sender": "ben@example.com",
+        "sender": "postmaster@x.com",
         "to": ["ben@example.com"],
         "cc": [],
         "subject": "Undeliverable: hi",
@@ -239,3 +241,46 @@ def test_exchange_diagnostic_trimmed_at_word_boundary():
     b = bounces.extract(_undeliverable(body), [])
     assert b.status == "5.1.10"
     assert len(b.diagnostic) <= 160 and b.diagnostic.endswith("words")
+
+
+def test_exchange_phrase_with_camel_case_domain():
+    body = (
+        "Your message to cto@AcmeHealth.com couldn't be delivered. Sender Address: ben@drolet.ai "
+        "Status code: 550 5.1.10 This error occurs because the address doesn't exist."
+    )
+    b = bounces.extract(_undeliverable(body), [])
+    assert b.failed_recipients == ["cto@acmehealth.com"]
+    assert b.status == "5.1.10"
+    assert b.diagnostic == "This error occurs because the address doesn't exist"
+
+
+def test_exchange_online_fixture_with_camel_case_recipient():
+    from clients.azure.email import Email
+    from services.ingestion import normalize
+
+    raw = (_FIXTURES / "ndr_exchange_online.json").read_text()
+    data = json.loads(raw.replace("cto@acme.com", "cto@AcmeHealth.com"))
+    msg = normalize(Email(data))
+    b = bounces.extract(msg, data["attachments"])
+    assert b.failed_recipients == ["cto@acmehealth.com"]
+    assert b.status == "5.1.10"
+
+
+def test_fallback_ignores_quoted_header_block():
+    body = "From: ben@x.com\nTo: cto@acme.com\nMessage-ID: <abc@mail.x.com>"
+    assert bounces.extract(_undeliverable(body), []) is None
+
+
+def test_sender_label_exclusion_is_anchored_to_the_next_address():
+    body = "From: ben@drolet.ai\nRecipient: cto@acme.com"
+    assert bounces.extract(_undeliverable(body), []).failed_recipients == ["cto@acme.com"]
+
+
+def test_sender_label_with_display_name_is_skipped():
+    body = 'From: "Ben Drolet" <ben@drolet.ai>\nRecipient: cto@acme.com'
+    assert bounces.extract(_undeliverable(body), []).failed_recipients == ["cto@acme.com"]
+
+
+def test_trim_words_never_exceeds_limit():
+    assert len(bounces._trim_words("x" * 200, 160)) == 160
+    assert bounces._trim_words("ab cd", 4) == "ab"
