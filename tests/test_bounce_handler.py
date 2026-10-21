@@ -92,24 +92,26 @@ def test_graph_failure_during_resolution_still_publishes(monkeypatch, published)
     assert published[0]["original_graph_message_id"] is None
 
 
-def test_attachment_fetch_failure_does_not_raise(monkeypatch, published):
-    msg, _ = _load("ndr_exchange.json")
+def test_attachment_fetch_failure_still_publishes_from_body(monkeypatch, published):
+    msg, _ = _load("ndr_plain.json")
+    assert msg["has_attachments"] is True
 
     def boom(external_id):
         raise RuntimeError("graph down")
 
     monkeypatch.setattr(bounce, "fetch_attachments", boom)
-    # Sender is not an NDR sender and subject is "Undeliverable:" so it is
-    # still an NDR by subject, but the body cannot be parsed without the DSN.
-    assert isinstance(bounce.maybe_publish(msg, FakeGraph()), bool)
+    assert bounce.maybe_publish(msg, FakeGraph()) is True
+    assert len(published) == 1
+    assert published[0]["failed_recipients"] == ["vp@health.co"]
 
 
 def test_no_attachment_fetch_without_has_attachments(monkeypatch, published):
     msg, _ = _load("ndr_plain.json")
     msg["has_attachments"] = False
-
-    def boom(external_id):
-        raise AssertionError("must not fetch")
-
-    monkeypatch.setattr(bounce, "fetch_attachments", boom)
-    bounce.maybe_publish(msg, FakeGraph())
+    fetched = []
+    monkeypatch.setattr(
+        bounce, "fetch_attachments", lambda external_id: fetched.append(external_id)
+    )
+    assert bounce.maybe_publish(msg, FakeGraph()) is True
+    assert fetched == []
+    assert len(published) == 1
