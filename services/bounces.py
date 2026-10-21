@@ -30,24 +30,36 @@ _NDR_LOCAL_PARTS = {"postmaster", "mailer-daemon"}
 # Exchange Online NDRs come from MicrosoftExchange<hex>@<tenant domain>.
 _NDR_LOCAL_PART_PREFIXES: tuple[str, ...] = ("microsoftexchange",)
 _DSN_TYPE = "message/delivery-status"
-# Domain labels are lowercase only and the match may not continue into a
-# lowercase letter: HTML-stripped bodies glue words onto addresses
-# ("ben@example.comRecipient Address:"). Match against the body as-is, never
-# lower-cased, or the glue comes back.
-_ADDR = r"(?-i:[\w.+'-]+@[a-z0-9-]+(?:\.[a-z0-9-]+)+)(?![a-z])"
+# A domain label in any case. A label with a lowercase letter followed by a
+# capital ("comRecipient") is a word glued on by HTML stripping, not a domain,
+# so it never matches; the check is case-sensitive even inside re.I patterns.
+_LABEL = r"(?-i:(?![A-Za-z0-9-]*[a-z][A-Z]))[A-Za-z0-9-]+"
+# Recipient as typed; lower-cased after capture. Used where the surrounding
+# phrase bounds the end of the match.
+_PHRASE_ADDR = rf"[\w.+'-]+@{_LABEL}(?:\.{_LABEL})+"
+# Free-standing address: HTML-stripped bodies glue words onto addresses
+# ("ben@example.comRecipient Address:", "cto@acme.comwasn't"), so an
+# occurrence followed directly by a word character or apostrophe is not an
+# address at all: a miss, never a wrong hit.
+_ADDR = _PHRASE_ADDR + r"(?![\w'\u2019])"
 _ADDR_RE = re.compile(_ADDR)
-_EXCHANGE_PHRASE = re.compile(rf"Your message to\s*({_ADDR})\s*couldn.t be delivered", re.I)
+_EXCHANGE_PHRASE = re.compile(rf"Your message to\s*({_PHRASE_ADDR})\s*couldn.t be delivered", re.I)
 # Tried in order against the body; a phrase match beats the first-address fallback.
 _PHRASE_PATTERNS: tuple[re.Pattern[str], ...] = (
     _EXCHANGE_PHRASE,
     re.compile(rf"wasn.t delivered to\s*({_ADDR})", re.I),
-    re.compile(rf"message to\s*({_ADDR})\s*(?:was|has been) (?:blocked|rejected)", re.I),
+    re.compile(rf"message to\s*({_PHRASE_ADDR})\s*(?:was|has been) (?:blocked|rejected)", re.I),
     re.compile(
         rf"(?:delivery to the following recipients? failed|failed permanently)[^@]{{0,80}}?({_ADDR})",
         re.I,
     ),
 )
-_EXCHANGE_STATUS_RE = re.compile(r"Status code:\s*\d{3}\s+(\d\.\d+\.\d+)\s*([^.]{0,160})", re.I)
+_EXCHANGE_STATUS_RE = re.compile(r"Status code:\s*\d{3}\s+(\d\.\d+\.\d+)\s*([^.]*)", re.I)
+_DIAGNOSTIC_MAX = 160
+# Exchange and most MTAs label the NDR's own sender this way; an address just
+# after such a label is never the failed recipient.
+_SENDER_LABEL_RE = re.compile(r"(?:Sender Address|From):", re.I)
+_SENDER_LABEL_WINDOW = 40
 _RFC822_RE = re.compile(r"rfc822;\s*(\S+@\S+)", re.IGNORECASE)
 
 
@@ -88,6 +100,13 @@ def is_ndr(sender: str, subject: str, attachments: list[dict]) -> bool:
     if any(a.get("contentType") == _DSN_TYPE for a in attachments or []):
         return True
     return _starts_with_prefix(subject or "") is not None
+
+
+def _trim_words(text: str, limit: int) -> str:
+    """Cut text to at most limit characters, at the last word boundary."""
+    if len(text) <= limit:
+        return text
+    return text[: limit + 1].rsplit(" ", 1)[0].rstrip()
 
 
 def _original_subject(subject: str) -> str:
@@ -145,14 +164,18 @@ def extract(msg: Message, attachments: list[dict]) -> Bounce | None:
         status = diagnostic = None
         if pattern is _EXCHANGE_PHRASE and (s := _EXCHANGE_STATUS_RE.search(body)):
             status = s.group(1)
-            diagnostic = " ".join(s.group(2).split()) or None
+            diagnostic = _trim_words(" ".join(s.group(2).split()), _DIAGNOSTIC_MAX) or None
         return Bounce([m.group(1).lower()], status, diagnostic, original_subject)
 
     # Generic fallback: the first address that is neither the NDR's sender nor
     # a system mailbox. To/Cc are NOT excluded: Exchange addresses the NDR to
     # the failed recipient.
+    # Addresses labelled "Sender Address:"/"From:" are skipped too.
     for m in _ADDR_RE.finditer(body):
         addr = m.group(0).lower()
-        if addr != sender and _local_part(addr) not in _NDR_LOCAL_PARTS:
-            return Bounce([addr], None, None, original_subject)
+        if addr == sender or _local_part(addr) in _NDR_LOCAL_PARTS:
+            continue
+        if _SENDER_LABEL_RE.search(body[max(0, m.start() - _SENDER_LABEL_WINDOW) : m.start()]):
+            continue
+        return Bounce([addr], None, None, original_subject)
     return None

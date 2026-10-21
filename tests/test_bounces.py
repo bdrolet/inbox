@@ -153,6 +153,7 @@ def test_exchange_online_ndr_from_fixture():
     assert b.failed_recipients == ["cto@acme.com"]
     assert b.status == "5.1.10"
     assert b.diagnostic.startswith("This error occurs because")
+    assert b.diagnostic.endswith("at the destination")
     assert b.original_subject == "Production-readiness audit for Acme"
 
 
@@ -164,10 +165,8 @@ def test_microsoftexchange_sender_is_ndr():
 
 def test_addr_regex_stops_at_glued_text():
     body = "Sender Address: ben@example.comRecipient Address: cto@acme.com"
-    assert [m.group(0) for m in bounces._ADDR_RE.finditer(body)] == [
-        "ben@example.com",
-        "cto@acme.com",
-    ]
+    # A glued occurrence is a miss, never a wrong hit like "ben@example.comrecipient".
+    assert [m.group(0) for m in bounces._ADDR_RE.finditer(body)] == ["cto@acme.com"]
     msg = {
         "sender": "ben@example.com",
         "to": ["ben@example.com"],
@@ -198,3 +197,45 @@ def test_fallback_no_longer_excludes_the_ndr_to_address():
         "body": "Recipient: cto@acme.com",
     }
     assert bounces.extract(msg, []).failed_recipients == ["cto@acme.com"]
+
+
+def _undeliverable(body: str, sender: str = "postmaster@x.com"):
+    return {
+        "sender": sender,
+        "to": ["ben@example.com"],
+        "cc": [],
+        "subject": "Undeliverable: hi",
+        "body": body,
+    }
+
+
+def test_exchange_phrase_with_capitalised_domain():
+    for typed in ("cto@Acme.com", "CTO@ACME.COM"):
+        body = f"Your message to {typed} couldn't be delivered. Sender Address: ben@drolet.ai"
+        b = bounces.extract(_undeliverable(body), [])
+        assert b.failed_recipients == ["cto@acme.com"], typed
+
+
+def test_fallback_skips_sender_address_label_and_accepts_capitals():
+    body = "Sender Address: ben@drolet.ai Recipient Address: cto@Acme.com"
+    assert bounces.extract(_undeliverable(body), []).failed_recipients == ["cto@acme.com"]
+
+
+def test_fallback_skips_from_label():
+    body = "From: ben@drolet.ai\nSubject: Production-readiness audit\nTo: cto@acme.com"
+    assert bounces.extract(_undeliverable(body), []).failed_recipients == ["cto@acme.com"]
+
+
+def test_fallback_glued_lowercase_word_is_a_miss():
+    assert bounces.extract(_undeliverable("cto@acme.comwasn't found"), []) is None
+
+
+def test_exchange_diagnostic_trimmed_at_word_boundary():
+    body = (
+        "Your message to cto@acme.com couldn't be delivered. Status code: 550 5.1.10 "
+        + "words " * 50
+        + "end."
+    )
+    b = bounces.extract(_undeliverable(body), [])
+    assert b.status == "5.1.10"
+    assert len(b.diagnostic) <= 160 and b.diagnostic.endswith("words")
