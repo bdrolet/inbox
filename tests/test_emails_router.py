@@ -183,9 +183,36 @@ def test_reply_sends_by_default(monkeypatch):
         "comment": "Sounds great",
         "reply_all": False,
         "send": True,
+        "to": None,
+        "cc": None,
         "from_address": "ben@drolet.ai",
         "from_shared": False,
     }
+
+
+def test_reply_passes_to_and_cc(monkeypatch):
+    fake = _use_client(monkeypatch, _FakeReplyClient())
+    resp = client.post(
+        "/emails/m1/reply", json={"body": "hi", "to": ["a@x.com"], "cc": ["b@x.com"]}
+    )
+    assert resp.status_code == 200 and resp.json()["status"] == "sent"
+    assert fake.kwargs["to"] == ["a@x.com"] and fake.kwargs["cc"] == ["b@x.com"]
+
+
+def test_reply_omitting_to_sends_none(monkeypatch):
+    fake = _use_client(monkeypatch, _FakeReplyClient())
+    assert client.post("/emails/m1/reply", json={"body": "hi"}).status_code == 200
+    assert fake.kwargs["to"] is None and fake.kwargs["cc"] is None
+
+
+def test_reply_all_with_to_is_400(monkeypatch):
+    fake = _use_client(monkeypatch, _FakeReplyClient())
+    resp = client.post(
+        "/emails/m1/reply", json={"body": "hi", "reply_all": True, "to": ["a@x.com"]}
+    )
+    assert resp.status_code == 400
+    assert resp.json() == {"detail": "reply_all and to are mutually exclusive"}
+    assert fake.kwargs is None  # Graph never called
 
 
 def test_reply_draft_returns_id_and_link(monkeypatch):

@@ -126,6 +126,8 @@ class ReplyRequest(BaseModel):
     body: str  # sent as Graph's `comment`: placed above the quoted original
     reply_all: bool = False
     send: bool = True  # false leaves a threaded draft for review
+    to: list[str] | None = None  # explicit To; mutually exclusive with reply_all
+    cc: list[str] | None = None
     from_: FromMailbox | None = Field(default=None, alias="from")
 
 
@@ -309,6 +311,8 @@ def delete_draft(draft_id: str, req: DeleteDraftRequest | None = None) -> Status
 # `:path` because Graph ids can contain "/", which arrives decoded from %2F
 @router.post("/{message_id:path}/reply", response_model=ReplyResponse)
 def reply(message_id: str, req: ReplyRequest) -> ReplyResponse:
+    if req.reply_all and req.to:
+        raise HTTPException(status_code=400, detail="reply_all and to are mutually exclusive")
     client = _get_client()
     addr, shared = _from_parts(req.from_)
     draft = _call_graph(
@@ -317,6 +321,8 @@ def reply(message_id: str, req: ReplyRequest) -> ReplyResponse:
         comment=req.body,
         reply_all=req.reply_all,
         send=req.send,
+        to=req.to,
+        cc=req.cc,
         from_address=addr,
         from_shared=shared,
     )
