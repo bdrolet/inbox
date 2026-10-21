@@ -7,7 +7,7 @@ message into an email_bounced event (see services.email_events).
 import base64
 import re
 from dataclasses import dataclass
-from email import message_from_bytes
+from email import message_from_string, policy
 
 from models.message import Message
 
@@ -58,16 +58,16 @@ def _parse_dsn(raw: bytes) -> tuple[list[str], str | None, str | None]:
     diagnostic: str | None = None
     # Per-message group first, then one group per recipient, blank-line separated.
     for group in re.split(r"\r?\n\s*\r?\n", raw.decode("utf-8", errors="replace").strip()):
-        hdrs = message_from_bytes(group.strip().encode("utf-8"))
-        field = hdrs.get("Final-Recipient") or hdrs.get("Original-Recipient")
+        hdrs = message_from_string(group.strip(), policy=policy.default)
+        field = str(hdrs.get("Final-Recipient") or hdrs.get("Original-Recipient") or "")
         m = _RFC822_RE.search(field or "")
         if not m:
             continue
         addr = m.group(1).strip().strip("<>;").lower()
         if addr not in recipients:
             recipients.append(addr)
-        status = status or (hdrs.get("Status") or "").strip() or None
-        diagnostic = diagnostic or " ".join((hdrs.get("Diagnostic-Code") or "").split()) or None
+        status = status or str(hdrs.get("Status") or "").strip() or None
+        diagnostic = diagnostic or " ".join(str(hdrs.get("Diagnostic-Code") or "").split()) or None
     if not recipients:
         recipients = [
             m.strip("<>;").lower() for m in _RFC822_RE.findall(raw.decode("utf-8", "replace"))

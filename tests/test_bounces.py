@@ -41,8 +41,39 @@ def test_plain_bounce_detected_by_subject_prefix():
     assert bounces.extract(msg, atts).failed_recipients == ["vp@health.co"]
 
 
-def test_display_name_postmaster_is_not_an_ndr():
+def test_postmaster_outside_local_part_is_not_an_ndr():
+    # is_ndr takes the address only; callers must pass msg["sender"], never
+    # sender_display.
     assert not bounces.is_ndr("sue@acme.com", "Re: postmaster question", [])
+    assert not bounces.is_ndr("bob@postmaster.com", "Hello", [])
+    assert not bounces.is_ndr("postmaster.bob@acme.com", "Hello", [])
+
+
+def _dsn_msg_atts(dsn: bytes):
+    import base64
+
+    msg = {
+        "sender": "postmaster@x.com",
+        "to": ["ben@drolet.ai"],
+        "cc": [],
+        "subject": "",
+        "body": "",
+    }
+    att = {"contentType": "message/delivery-status", "contentBytes": base64.b64encode(dsn).decode()}
+    return msg, [att]
+
+
+def test_non_ascii_dsn_headers_do_not_crash():
+    dsn = "Reporting-MTA: dns;x\n\nFinal-Recipient: rfc822;a@x.com\nStatus: 5.1.1\nDiagnostic-Code: smtp; 550 Empf\u00e4nger unbekannt\n"
+    b = bounces.extract(*_dsn_msg_atts(dsn.encode()))
+    assert b.failed_recipients == ["a@x.com"] and b.status == "5.1.1"
+    assert "Empf\u00e4nger" in b.diagnostic
+
+
+def test_invalid_bytes_in_dsn_do_not_crash():
+    dsn = b"Reporting-MTA: dns;x\n\nFinal-Recipient: rfc822;a@x.com\nStatus: 5.1.1\nDiagnostic-Code: smtp; 550 \xff\xfe bad\n"
+    b = bounces.extract(*_dsn_msg_atts(dsn))
+    assert b.failed_recipients == ["a@x.com"] and b.status == "5.1.1"
 
 
 def test_body_without_any_foreign_address_returns_none():
