@@ -2,8 +2,9 @@
 
 One email_classified event per processed email (every category — the tasks
 repo, github.com/bdrolet/tasks, owns the policy for which become Asana tasks)
-plus label_applied feedback events. Tasks' models/events.py mirrors these
-payloads exactly.
+plus label_applied feedback events and email_bounced events (one per inbound
+non-delivery report, built from services.bounces; consumed by the people
+repo). Tasks' models/events.py mirrors these payloads exactly.
 
 Calendar invites are not inbox's concern: the schedule repo
 (github.com/bdrolet/schedule) owns all calendar logic and reads `.ics`
