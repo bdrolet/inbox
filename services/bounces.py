@@ -27,8 +27,27 @@ NON_FAILURE_SUBJECT_MARKERS: tuple[str, ...] = (
     "Undeliverable: Delivery delayed",
 )
 _NDR_LOCAL_PARTS = {"postmaster", "mailer-daemon"}
+# Exchange Online NDRs come from MicrosoftExchange<hex>@<tenant domain>.
+_NDR_LOCAL_PART_PREFIXES: tuple[str, ...] = ("microsoftexchange",)
 _DSN_TYPE = "message/delivery-status"
-_ADDR_RE = re.compile(r"[\w.+'-]+@[\w-]+(?:\.[\w-]+)+")
+# Domain labels are lowercase only and the match may not continue into a
+# lowercase letter: HTML-stripped bodies glue words onto addresses
+# ("ben@example.comRecipient Address:"). Match against the body as-is, never
+# lower-cased, or the glue comes back.
+_ADDR = r"(?-i:[\w.+'-]+@[a-z0-9-]+(?:\.[a-z0-9-]+)+)(?![a-z])"
+_ADDR_RE = re.compile(_ADDR)
+_EXCHANGE_PHRASE = re.compile(rf"Your message to\s*({_ADDR})\s*couldn.t be delivered", re.I)
+# Tried in order against the body; a phrase match beats the first-address fallback.
+_PHRASE_PATTERNS: tuple[re.Pattern[str], ...] = (
+    _EXCHANGE_PHRASE,
+    re.compile(rf"wasn.t delivered to\s*({_ADDR})", re.I),
+    re.compile(rf"message to\s*({_ADDR})\s*(?:was|has been) (?:blocked|rejected)", re.I),
+    re.compile(
+        rf"(?:delivery to the following recipients? failed|failed permanently)[^@]{{0,80}}?({_ADDR})",
+        re.I,
+    ),
+)
+_EXCHANGE_STATUS_RE = re.compile(r"Status code:\s*\d{3}\s+(\d\.\d+\.\d+)\s*([^.]{0,160})", re.I)
 _RFC822_RE = re.compile(r"rfc822;\s*(\S+@\S+)", re.IGNORECASE)
 
 
@@ -63,7 +82,8 @@ def _is_permanent_failure(hdrs) -> bool:
 
 
 def is_ndr(sender: str, subject: str, attachments: list[dict]) -> bool:
-    if _local_part(sender or "") in _NDR_LOCAL_PARTS:
+    local = _local_part(sender or "")
+    if local in _NDR_LOCAL_PARTS or local.startswith(_NDR_LOCAL_PART_PREFIXES):
         return True
     if any(a.get("contentType") == _DSN_TYPE for a in attachments or []):
         return True
@@ -116,10 +136,23 @@ def extract(msg: Message, attachments: list[dict]) -> Bounce | None:
         if recipients:
             return Bounce(recipients, status, diagnostic, original_subject)
 
-    known = {(msg.get("sender") or "").lower()}
-    known |= {a.lower() for a in (msg.get("to") or []) + (msg.get("cc") or [])}
-    for m in _ADDR_RE.finditer(msg.get("body") or ""):
+    body = msg.get("body") or ""
+    sender = (msg.get("sender") or "").lower()
+    for pattern in _PHRASE_PATTERNS:
+        m = pattern.search(body)
+        if not m or m.group(1).lower() == sender:
+            continue
+        status = diagnostic = None
+        if pattern is _EXCHANGE_PHRASE and (s := _EXCHANGE_STATUS_RE.search(body)):
+            status = s.group(1)
+            diagnostic = " ".join(s.group(2).split()) or None
+        return Bounce([m.group(1).lower()], status, diagnostic, original_subject)
+
+    # Generic fallback: the first address that is neither the NDR's sender nor
+    # a system mailbox. To/Cc are NOT excluded: Exchange addresses the NDR to
+    # the failed recipient.
+    for m in _ADDR_RE.finditer(body):
         addr = m.group(0).lower()
-        if addr not in known and _local_part(addr) not in _NDR_LOCAL_PARTS:
+        if addr != sender and _local_part(addr) not in _NDR_LOCAL_PARTS:
             return Bounce([addr], None, None, original_subject)
     return None

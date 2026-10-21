@@ -139,3 +139,62 @@ def test_body_fallback_skips_system_addresses():
         "body": "From mailer-daemon@google.com: delivery to founder@startup.io failed",
     }
     assert bounces.extract(msg, []).failed_recipients == ["founder@startup.io"]
+
+
+def test_exchange_online_ndr_from_fixture():
+    from clients.azure.email import Email
+    from services.ingestion import normalize
+
+    data = json.loads((_FIXTURES / "ndr_exchange_online.json").read_text())
+    msg = normalize(Email(data))
+    atts = data["attachments"]
+    assert bounces.is_ndr(msg["sender"], msg["subject"], atts)
+    b = bounces.extract(msg, atts)
+    assert b.failed_recipients == ["cto@acme.com"]
+    assert b.status == "5.1.10"
+    assert b.diagnostic.startswith("This error occurs because")
+    assert b.original_subject == "Production-readiness audit for Acme"
+
+
+def test_microsoftexchange_sender_is_ndr():
+    assert bounces.is_ndr(
+        "MicrosoftExchange329e71ec88ae4615bbc36ab6ce41109e@example.com", "anything", []
+    )
+
+
+def test_addr_regex_stops_at_glued_text():
+    body = "Sender Address: ben@example.comRecipient Address: cto@acme.com"
+    assert [m.group(0) for m in bounces._ADDR_RE.finditer(body)] == [
+        "ben@example.com",
+        "cto@acme.com",
+    ]
+    msg = {
+        "sender": "ben@example.com",
+        "to": ["ben@example.com"],
+        "cc": [],
+        "subject": "Undeliverable: hi",
+        "body": body,
+    }
+    assert bounces.extract(msg, []).failed_recipients == ["cto@acme.com"]
+
+
+def test_gmail_phrase_pattern():
+    msg = {
+        "sender": "mailer-daemon@googlemail.com",
+        "to": ["ben@example.com"],
+        "cc": [],
+        "subject": "Delivery Status Notification (Failure)",
+        "body": "Your message wasn't delivered to founder@startup.io because the address couldn't be found",
+    }
+    assert bounces.extract(msg, []).failed_recipients == ["founder@startup.io"]
+
+
+def test_fallback_no_longer_excludes_the_ndr_to_address():
+    msg = {
+        "sender": "postmaster@x.com",
+        "to": ["cto@acme.com"],
+        "cc": [],
+        "subject": "Undeliverable: hi",
+        "body": "Recipient: cto@acme.com",
+    }
+    assert bounces.extract(msg, []).failed_recipients == ["cto@acme.com"]
