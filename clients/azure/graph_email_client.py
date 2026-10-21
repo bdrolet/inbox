@@ -656,7 +656,8 @@ class GraphEmailClient:
     ) -> dict:
         """Create a draft message saved to Drafts (not sent). Requires Mail.ReadWrite.
 
-        Returns the created Graph message dict (includes `id` and `webLink`).
+        Returns the created Graph message dict (includes `id` and `webLink`). The id is
+        an immutable id, so it stays valid after the draft moves to Sent Items.
         """
         base = self._mailbox_base(from_address, from_shared)
         message = self._build_message(
@@ -671,7 +672,7 @@ class GraphEmailClient:
         )
         response = requests.post(
             f"{self.graph_endpoint}{base}/messages",
-            headers=self.get_headers(),
+            headers=self.get_headers(immutable=True),
             json=message,
         )
         response.raise_for_status()
@@ -730,8 +731,8 @@ class GraphEmailClient:
         *,
         from_address: str | None = None,
         from_shared: bool = False,
-    ) -> None:
-        """Send an existing draft by id. Requires Mail.Send."""
+    ) -> str:
+        """Send an existing draft by id and return that id. Requires Mail.Send."""
         base = self._mailbox_base(from_address, from_shared)
         response = requests.post(
             f"{self.graph_endpoint}{base}/messages/{message_id}/send",
@@ -739,6 +740,7 @@ class GraphEmailClient:
         )
         response.raise_for_status()
         logger.info("Sent draft %s (base=%s)", message_id, base)
+        return message_id
 
     def delete_draft(
         self,

@@ -109,3 +109,27 @@ def test_delete_draft_malformed_id_is_lookup_error(monkeypatch):
     with pytest.raises(LookupError):
         _client().delete_draft("not-a-graph-id")
     assert seen["delete"] == []
+
+
+def test_create_draft_requests_immutable_ids(monkeypatch):
+    seen = {}
+
+    def fake_post(url, headers=None, json=None):
+        seen["headers"] = headers
+        return _Resp(201, {"id": "d1"})
+
+    monkeypatch.setattr(graph_email_client.requests, "post", fake_post)
+    _client().create_draft(to=["a@x.com"], subject="s", body="b")
+    assert seen["headers"]["Prefer"] == 'IdType="ImmutableId"'
+
+
+def test_send_draft_returns_the_id(monkeypatch):
+    seen = {}
+
+    def fake_post(url, headers=None, json=None):
+        seen["url"] = url
+        return _Resp(202)
+
+    monkeypatch.setattr(graph_email_client.requests, "post", fake_post)
+    assert _client().send_draft("d1") == "d1"
+    assert seen["url"].endswith("/messages/d1/send")

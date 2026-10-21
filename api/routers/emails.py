@@ -144,6 +144,7 @@ class DraftResponse(BaseModel):
 
 class StatusResponse(BaseModel):
     status: str
+    id: str | None = None
 
 
 def _from_parts(from_: FromMailbox | None) -> tuple[str | None, bool]:
@@ -274,7 +275,11 @@ def create_draft(req: CreateDraftRequest) -> DraftResponse:
     return DraftResponse(id=created.get("id"), web_link=created.get("webLink"))
 
 
-@router.post("/drafts/{draft_id}/attachments", response_model=StatusResponse)
+@router.post(
+    "/drafts/{draft_id}/attachments",
+    response_model=StatusResponse,
+    response_model_exclude_none=True,
+)
 def add_attachment(draft_id: str, req: AddAttachmentRequest) -> StatusResponse:
     client = _get_client()
     addr, shared = _from_parts(req.from_)
@@ -291,16 +296,20 @@ def add_attachment(draft_id: str, req: AddAttachmentRequest) -> StatusResponse:
     return StatusResponse(status="attached")
 
 
-@router.post("/drafts/{draft_id}/send", response_model=StatusResponse)
+@router.post(
+    "/drafts/{draft_id}/send", response_model=StatusResponse, response_model_exclude_none=True
+)
 def send_draft(draft_id: str, req: SendDraftRequest | None = None) -> StatusResponse:
     client = _get_client()
     addr, shared = _from_parts(req.from_ if req else None)
-    _call_graph(client.send_draft, draft_id, from_address=addr, from_shared=shared)
-    return StatusResponse(status="sent")
+    sent_id = _call_graph(client.send_draft, draft_id, from_address=addr, from_shared=shared)
+    return StatusResponse(status="sent", id=sent_id)
 
 
 # `:path` because Graph ids can contain "/", which arrives decoded from %2F
-@router.delete("/drafts/{draft_id:path}", response_model=StatusResponse)
+@router.delete(
+    "/drafts/{draft_id:path}", response_model=StatusResponse, response_model_exclude_none=True
+)
 def delete_draft(draft_id: str, req: DeleteDraftRequest | None = None) -> StatusResponse:
     client = _get_client()
     addr, shared = _from_parts(req.from_ if req else None)
@@ -331,7 +340,7 @@ def reply(message_id: str, req: ReplyRequest) -> ReplyResponse:
     return ReplyResponse(status="drafted", id=draft.get("id"), web_link=draft.get("webLink"))
 
 
-@router.post("/send", response_model=StatusResponse)
+@router.post("/send", response_model=StatusResponse, response_model_exclude_none=True)
 def send_message(req: SendMessageRequest) -> StatusResponse:
     client = _get_client()
     addr, shared = _from_parts(req.from_)

@@ -335,3 +335,14 @@ def test_blank_default_from_address_sends_from_primary(monkeypatch):
     fake = _use_client(monkeypatch, _FakeReplyClient())
     client.post("/emails/m1/reply", json={"body": "hi"})
     assert fake.kwargs["from_address"] is None
+
+
+def test_send_draft_returns_id(monkeypatch):
+    class _FakeSendClient:
+        def send_draft(self, message_id, *, from_address=None, from_shared=False):
+            return message_id
+
+    _use_client(monkeypatch, _FakeSendClient())
+    resp = client.post("/emails/drafts/d1/send")
+    assert resp.status_code == 200
+    assert resp.json() == {"status": "sent", "id": "d1"}
