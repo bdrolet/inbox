@@ -822,6 +822,8 @@ class GraphEmailClient:
         send: bool = True,
         from_address: str | None = None,
         from_shared: bool = False,
+        to: list[str] | None = None,
+        cc: list[str] | None = None,
     ) -> dict | None:
         """Reply to an existing message, threaded. Requires Mail.Send (send) or
         Mail.ReadWrite (draft).
@@ -830,6 +832,10 @@ class GraphEmailClient:
         (send=False) actions with `comment`, so Graph addresses the reply, sets
         the threading headers, and keeps the quoted history below the comment —
         unlike composing a fresh message with a matching subject.
+
+        Recipients can be overridden with `to` / `cc`. Without `to`, Graph
+        addresses the reply itself, so a reply to a Sent Items message goes back
+        to the mailbox owner rather than the original recipients.
 
         Returns None when sent; the draft dict (`id`, `webLink`) when send=False.
 
@@ -842,8 +848,15 @@ class GraphEmailClient:
         if not send:
             action = "create" + action[0].upper() + action[1:]
         payload: dict = {"comment": comment}
+        message: dict = {}
         if from_address and not from_shared:
-            payload["message"] = {"from": {"emailAddress": {"address": from_address}}}
+            message["from"] = {"emailAddress": {"address": from_address}}
+        if to:
+            message["toRecipients"] = [{"emailAddress": {"address": a}} for a in to]
+        if cc:
+            message["ccRecipients"] = [{"emailAddress": {"address": a}} for a in cc]
+        if message:
+            payload["message"] = message
         response = requests.post(
             f"{self.graph_endpoint}{base}/messages/{quote(message_id, safe='')}/{action}",
             headers=self.get_headers(),
