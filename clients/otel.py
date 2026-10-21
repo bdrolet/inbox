@@ -34,6 +34,7 @@ events_published: metrics.Counter = metrics.NoOpMeter("noop").create_counter("no
 people_lookup: metrics.Counter = metrics.NoOpMeter("noop").create_counter("noop")
 people_lookup_duration: metrics.Histogram = metrics.NoOpMeter("noop").create_histogram("noop")
 emails_sent_published: metrics.Counter = metrics.NoOpMeter("noop").create_counter("noop")
+emails_bounced_published: metrics.Counter = metrics.NoOpMeter("noop").create_counter("noop")
 
 
 def setup_telemetry(service_name: str) -> None:
@@ -46,6 +47,7 @@ def setup_telemetry(service_name: str) -> None:
     global human_feedback, confidence_hist, stage_duration, neighbors_hist
     global sweep_actions, events_published
     global people_lookup, people_lookup_duration, emails_sent_published
+    global emails_bounced_published
 
     endpoint = os.environ.get("GRAFANA_OTLP_ENDPOINT")
     if not endpoint:
@@ -118,6 +120,9 @@ def setup_telemetry(service_name: str) -> None:
     )
     emails_sent_published = meter.create_counter(
         "inbox.emails.sent.published", description="email_sent events published"
+    )
+    emails_bounced_published = meter.create_counter(
+        "inbox.emails.bounced.published", description="email_bounced events published"
     )
 
     # --- Logs ---

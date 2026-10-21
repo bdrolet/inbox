@@ -79,3 +79,50 @@ def test_repair_handles_null_importance_and_tags(monkeypatch):
     graph = FakeGraph()
     _repair_tag_if_missing(None, graph, FakeEmail(categories=[]), "db-1", "ext-1")
     assert graph.tagged == [("ext-1", ["reference"])]
+
+
+class _Conn:
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+
+class _Stop(Exception):
+    pass
+
+
+def _drive_run(monkeypatch, existing):
+    import handlers.pipeline as pipeline
+
+    calls = []
+    msg = {"source": "email", "external_id": "e1", "sender": "a@x.com", "subject": "s"}
+    monkeypatch.delenv("GCP_PROJECT_ID", raising=False)
+    monkeypatch.setattr(pipeline, "get_graph_client", lambda: object())
+    monkeypatch.setattr(pipeline, "fetch", lambda mid, client: FakeEmail([]))
+    monkeypatch.setattr(pipeline, "normalize", lambda email, raw=None: dict(msg))
+    monkeypatch.setattr(pipeline, "get_conn", lambda: _Conn())
+    monkeypatch.setattr(pipeline.messages, "get_by_external_id", lambda *a: existing)
+    monkeypatch.setattr(pipeline.messages, "insert", lambda conn, m: "db-1", raising=False)
+    monkeypatch.setattr(pipeline, "_repair_tag_if_missing", lambda *a: None)
+    monkeypatch.setattr(pipeline.bounce, "maybe_publish", lambda m, g: calls.append(m) or False)
+
+    def stop(sender):
+        raise _Stop
+
+    monkeypatch.setattr(pipeline.people_api, "get_person", stop)
+    try:
+        pipeline.run({"resourceData": {"id": "e1"}}, model=None)
+    except _Stop:
+        pass
+    return calls
+
+
+def test_run_publishes_bounce_check_once_for_fresh_message(monkeypatch):
+    calls = _drive_run(monkeypatch, existing=None)
+    assert len(calls) == 1 and calls[0]["id"] == "db-1"
+
+
+def test_run_skips_bounce_check_for_duplicate(monkeypatch):
+    assert _drive_run(monkeypatch, existing={"id": "db-0"}) == []

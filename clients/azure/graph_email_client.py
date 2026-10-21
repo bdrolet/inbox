@@ -1163,6 +1163,35 @@ class GraphEmailClient:
             logger.warning("latest_reply_from_me failed for conversation %s", conversation_id)
             return None
 
+    def sent_message_id_in_conversation(self, conversation_id: str) -> str | None:
+        """Immutable id of the earliest Sent Items message in the conversation
+        (by sentDateTime), or None if there is none or on any failure."""
+        try:
+            resp = requests.get(
+                f"{self.graph_endpoint}/me/mailFolders/sentitems/messages",
+                headers=self.get_headers(immutable=True),
+                params={
+                    "$filter": f"conversationId eq '{conversation_id}'",
+                    "$select": "id,sentDateTime",
+                    "$top": "25",
+                },
+            )
+            resp.raise_for_status()
+            best: tuple[datetime, str] | None = None
+            for m in resp.json().get("value", []):
+                sent = m.get("sentDateTime")
+                if not sent or not m.get("id"):
+                    continue
+                sent_dt = datetime.fromisoformat(sent.replace("Z", "+00:00"))
+                if best is None or sent_dt < best[0]:
+                    best = (sent_dt, m["id"])
+            return best[1] if best else None
+        except (requests.exceptions.RequestException, ValueError, TypeError):
+            logger.warning(
+                "sent_message_id_in_conversation failed for conversation %s", conversation_id
+            )
+            return None
+
     def get_web_link(self, external_id: str) -> str | None:
         """Resolve a message's current webLink via its immutable ID."""
         resp = requests.get(

@@ -13,6 +13,7 @@ from clients import people_api
 from clients.claude import classify
 from clients.db import get_conn
 from clients.graph import get_graph_client
+from handlers import bounce
 from handlers.actions.dispatch import dispatch
 from models.types import Category
 from repo import classifications, messages
@@ -72,6 +73,7 @@ def run(notification: dict, model, context=None) -> None:
                 msg["id"] = (
                     msg_id  # make DB UUID available to action handlers (ntfy action buttons)
                 )
+                bounce.maybe_publish(msg, graph_client)  # NDR → email_bounced event; never raises
                 sender_ctx = people_api.get_person(msg["sender"])  # None → no sender context
 
                 # Embed

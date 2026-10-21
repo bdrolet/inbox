@@ -215,3 +215,35 @@ def test_latest_reply_from_me_none_on_bad_sent_datetime(monkeypatch):
     monkeypatch.setattr(requests, "get", fake_get)
     after = datetime(2026, 7, 10, tzinfo=timezone.utc)
     assert _client().latest_reply_from_me("conv1", after) is None
+
+
+def test_sent_message_id_in_conversation_returns_earliest(monkeypatch):
+    seen = {}
+
+    def fake_get(url, headers=None, params=None):
+        seen.update(url=url, headers=headers, params=params)
+        return _Resp(
+            json_data={
+                "value": [
+                    {"id": "late", "sentDateTime": "2026-09-03T10:00:00Z"},
+                    {"id": "early", "sentDateTime": "2026-09-01T10:00:00Z"},
+                    {"id": "nodate"},
+                ]
+            }
+        )
+
+    monkeypatch.setattr(requests, "get", fake_get)
+    assert _client().sent_message_id_in_conversation("conv1") == "early"
+    assert seen["url"].endswith("/me/mailFolders/sentitems/messages")
+    assert seen["params"]["$filter"] == "conversationId eq 'conv1'"
+    assert seen["headers"]["Prefer"] == 'IdType="ImmutableId"'
+
+
+def test_sent_message_id_in_conversation_none_on_no_match(monkeypatch):
+    monkeypatch.setattr(requests, "get", lambda *a, **k: _Resp(json_data={"value": []}))
+    assert _client().sent_message_id_in_conversation("conv1") is None
+
+
+def test_sent_message_id_in_conversation_none_on_failure(monkeypatch):
+    monkeypatch.setattr(requests, "get", lambda *a, **k: _Resp(status_code=500))
+    assert _client().sent_message_id_in_conversation("conv1") is None
