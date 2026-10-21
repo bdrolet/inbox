@@ -247,3 +247,28 @@ def test_sent_message_id_in_conversation_none_on_no_match(monkeypatch):
 def test_sent_message_id_in_conversation_none_on_failure(monkeypatch):
     monkeypatch.setattr(requests, "get", lambda *a, **k: _Resp(status_code=500))
     assert _client().sent_message_id_in_conversation("conv1") is None
+
+
+def test_search_emails_selects_is_draft(monkeypatch):
+    seen = {}
+
+    def fake_get(url, headers=None, params=None):
+        seen["params"] = params
+        return _Resp(json_data={"value": [{"id": "m1", "isDraft": True}]})
+
+    monkeypatch.setattr(requests, "get", fake_get)
+    results = _client().search_emails("hello")
+    assert "isDraft" in seen["params"]["$select"].split(",")
+    assert results[0].is_draft is True
+
+
+def test_get_email_details_selects_is_draft(monkeypatch):
+    seen = {}
+
+    def fake_get(url, headers=None, params=None):
+        seen["params"] = params
+        return _Resp(json_data={"id": "m1"})
+
+    monkeypatch.setattr(requests, "get", fake_get)
+    _client().get_email_details("m1")
+    assert "isDraft" in seen["params"]["$select"].split(",")

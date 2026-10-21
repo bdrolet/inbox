@@ -346,3 +346,49 @@ def test_send_draft_returns_id(monkeypatch):
     resp = client.post("/emails/drafts/d1/send")
     assert resp.status_code == 200
     assert resp.json() == {"status": "sent", "id": "d1"}
+
+
+class _SearchGraph:
+    def authenticate_headless(self):
+        return True
+
+    def search_emails(self, query, mailbox="me", limit=25):
+        return [
+            Email({"id": "d1", "subject": "draft", "isDraft": True}),
+            Email({"id": "s1", "subject": "sent", "isDraft": False}),
+            Email({"id": "u1", "subject": "unknown"}),
+        ]
+
+    def get_member_groups(self):
+        return []
+
+
+def test_search_graph_results_carry_is_draft(monkeypatch):
+    import clients.azure
+
+    monkeypatch.setattr(clients.azure, "GraphEmailClient", _SearchGraph)
+    resp = client.post("/search", json={"query": "x", "mailboxes": ["me"]})
+    assert resp.status_code == 200
+    by_id = {r["message_id"]: r for r in resp.json()["results"]}
+    assert by_id["d1"]["is_draft"] is True
+    assert by_id["s1"]["is_draft"] is False
+    assert by_id["u1"]["is_draft"] is None
+
+
+def test_search_db_results_have_null_is_draft(monkeypatch):
+    import sys
+    import types
+
+    class _Conn:
+        def close(self):
+            pass
+
+    fake_db = types.ModuleType("clients.db")
+    fake_db.get_conn = lambda: _Conn()
+    fake_repo = types.ModuleType("repo.messages")
+    fake_repo.search_messages = lambda conn, q, limit=25: [{"id": 7, "subject": "s"}]
+    monkeypatch.setitem(sys.modules, "clients.db", fake_db)
+    monkeypatch.setitem(sys.modules, "repo.messages", fake_repo)
+    resp = client.post("/search", json={"query": "x", "mode": "db"})
+    assert resp.status_code == 200
+    assert resp.json()["results"][0]["is_draft"] is None

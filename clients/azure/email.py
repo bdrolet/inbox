@@ -27,6 +27,7 @@ class Email:
         self.categories = data.get("categories", [])
         self.odata_type = data.get("@odata.type", "") or ""
         self.conversation_id = data.get("conversationId")
+        self.is_draft = data.get("isDraft")
 
         if self.received_datetime:
             try:

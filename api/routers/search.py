@@ -29,6 +29,7 @@ class SearchResult(BaseModel):
     web_link: str | None = None
     category: str | None = None
     importance: str | None = None
+    is_draft: bool | None = None
 
 
 class SearchResponse(BaseModel):
@@ -128,6 +129,7 @@ def search(body: SearchRequest) -> SearchResponse:
                 preview=email.body_preview,
                 mailbox=source,
                 web_link=email.web_link,
+                is_draft=email.is_draft,
             )
             for email, source in unique
         ]

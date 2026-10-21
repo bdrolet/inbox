@@ -437,7 +437,7 @@ class GraphEmailClient:
 
         endpoint = f"{self._read_base(mailbox)}/messages/{email_id}"
         params = {
-            "$select": "id,subject,from,toRecipients,ccRecipients,bccRecipients,receivedDateTime,sentDateTime,body,bodyPreview,isRead,hasAttachments,attachments,webLink,categories,conversationId"
+            "$select": "id,subject,from,toRecipients,ccRecipients,bccRecipients,receivedDateTime,sentDateTime,body,bodyPreview,isRead,hasAttachments,attachments,webLink,categories,conversationId,isDraft"
         }
         response = requests.get(endpoint, headers=self.get_headers(immutable=True), params=params)
         if response.status_code == 404:
@@ -911,7 +911,7 @@ class GraphEmailClient:
         params = {
             "$search": f'"{query}"',
             "$top": str(limit),
-            "$select": "id,subject,from,toRecipients,receivedDateTime,bodyPreview,webLink",
+            "$select": "id,subject,from,toRecipients,receivedDateTime,bodyPreview,webLink,isDraft",
         }
         try:
             response = requests.get(endpoint, headers=self.get_headers(), params=params)
