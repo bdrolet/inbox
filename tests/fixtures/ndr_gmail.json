@@ -1,0 +1,24 @@
+{
+  "id": "AAMk-ndr_gmail",
+  "conversationId": "AAQk-ndr_gmail",
+  "subject": "Delivery Status Notification (Failure)",
+  "from": {
+    "emailAddress": {
+      "name": "Mail Delivery Subsystem",
+      "address": "mailer-daemon@googlemail.com"
+    }
+  },
+  "toRecipients": [
+    {
+      "emailAddress": {
+        "address": "ben@drolet.ai"
+      }
+    }
+  ],
+  "body": {
+    "contentType": "text",
+    "content": "Address not found. Your message wasn't delivered to founder@startup.io because the address couldn't be found."
+  },
+  "hasAttachments": false,
+  "attachments": []
+}

@@ -43,6 +43,7 @@ def normalize(email: Email, raw: dict | None = None) -> Message:
         body_html=email.body_content if email.body_type == "html" else None,
         received_at=received_at,
         thread_id=None,
+        conversation_id=getattr(email, "conversation_id", None),
         raw=raw or {},
         web_link=getattr(email, "web_link", None),
         has_attachments=bool(getattr(email, "has_attachments", False)),

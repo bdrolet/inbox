@@ -15,6 +15,7 @@ class Message(TypedDict):
     body_html: Optional[str]  # raw HTML body when content type is html, else None
     received_at: datetime
     thread_id: Optional[str]
+    conversation_id: Optional[str]  # Graph conversationId (groups a thread across replies)
     raw: dict  # original provider payload
     web_link: Optional[str]  # Outlook web URL (from Graph webLink property)
     has_attachments: bool  # Graph hasAttachments — schedule uses it to decide whether to fetch .ics

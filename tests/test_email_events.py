@@ -307,3 +307,29 @@ def test_email_sent_payload_shape():
         "subject": "Re: hello",
     }
     assert "body" not in p and "hidden@example.com" not in str(p)
+
+
+def test_build_bounced_event_shape():
+    from services.bounces import Bounce
+
+    msg = {
+        "id": "u1",
+        "external_id": "g1",
+        "conversation_id": "c1",
+        "received_at": datetime(2026, 10, 21, 12, 0, tzinfo=UTC),
+    }
+    ev = email_events.build_bounced_event(
+        msg, Bounce(["a@x.com"], "5.1.1", "550 no such user", "Hello"), "orig1"
+    )
+    assert ev == {
+        "event": "email_bounced",
+        "message_id": "u1",
+        "graph_message_id": "g1",
+        "conversation_id": "c1",
+        "received_at": "2026-10-21T12:00:00+00:00",
+        "failed_recipients": ["a@x.com"],
+        "status": "5.1.1",
+        "diagnostic": "550 no such user",
+        "original_subject": "Hello",
+        "original_graph_message_id": "orig1",
+    }

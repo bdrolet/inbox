@@ -1,0 +1,30 @@
+{
+  "id": "AAMk-ndr_exchange",
+  "conversationId": "AAQk-ndr_exchange",
+  "subject": "Undeliverable: Production-readiness audit for Acme",
+  "from": {
+    "emailAddress": {
+      "name": "Microsoft Outlook",
+      "address": "postmaster@drolet.ai"
+    }
+  },
+  "toRecipients": [
+    {
+      "emailAddress": {
+        "address": "ben@drolet.ai"
+      }
+    }
+  ],
+  "body": {
+    "contentType": "text",
+    "content": "Delivery has failed to these recipients or groups: cto@acme.com, ceo@acme.com"
+  },
+  "hasAttachments": true,
+  "attachments": [
+    {
+      "contentType": "message/delivery-status",
+      "name": "Delivery Status Notification.dsn",
+      "contentBytes": "UmVwb3J0aW5nLU1UQTogZG5zO21haWwuZHJvbGV0LmFpCgpGaW5hbC1SZWNpcGllbnQ6IHJmYzgyMjtjdG9AYWNtZS5jb20KQWN0aW9uOiBmYWlsZWQKU3RhdHVzOiA1LjEuMQpEaWFnbm9zdGljLUNvZGU6IHNtdHA7NTUwIDUuMS4xIFVzZXIgdW5rbm93bgoKT3JpZ2luYWwtUmVjaXBpZW50OiByZmM4MjI7Y2VvQGFjbWUuY29tCkZpbmFsLVJlY2lwaWVudDogcmZjODIyO0NFT0BhY21lLmNvbQpBY3Rpb246IGZhaWxlZApTdGF0dXM6IDUuMS4xCkRpYWdub3N0aWMtQ29kZTogc210cDs1NTAgNS4xLjEgUmVjaXBpZW50IG5vdCBmb3VuZAo="
+    }
+  ]
+}
