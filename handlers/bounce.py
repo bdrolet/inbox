@@ -1,7 +1,9 @@
 """Non-delivery report detection in the inbox pipeline → email_bounced event.
 
-The bounce message is still stored, embedded and classified as usual; this
-only adds the event. Best-effort: never raises into the pipeline.
+Called by the pipeline once the message row and its embedding are committed
+(so a Pub/Sub retry after a rolled-back insert cannot publish twice). The
+bounce message is still stored, embedded and classified as usual; this only
+adds the event. Best-effort: never raises into the pipeline.
 """
 
 import logging

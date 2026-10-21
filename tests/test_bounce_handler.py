@@ -115,3 +115,22 @@ def test_no_attachment_fetch_without_has_attachments(monkeypatch, published):
     assert bounce.maybe_publish(msg, FakeGraph()) is True
     assert fetched == []
     assert len(published) == 1
+
+
+def test_publish_failure_returns_false_and_does_not_count(monkeypatch):
+    msg, atts = _load("ndr_exchange.json")
+    _stub_attachments(monkeypatch, atts)
+
+    def down(ev):
+        raise RuntimeError("pubsub down")
+
+    monkeypatch.setattr(email_events, "publish", down)
+    counted = []
+
+    class _Counter:
+        def add(self, n, attributes=None):
+            counted.append(n)
+
+    monkeypatch.setattr(bounce.otel, "emails_bounced_published", _Counter())
+    assert bounce.maybe_publish(msg, FakeGraph()) is False
+    assert counted == []

@@ -73,7 +73,6 @@ def run(notification: dict, model, context=None) -> None:
                 msg["id"] = (
                     msg_id  # make DB UUID available to action handlers (ntfy action buttons)
                 )
-                bounce.maybe_publish(msg, graph_client)  # NDR → email_bounced event; never raises
                 sender_ctx = people_api.get_person(msg["sender"])  # None → no sender context
 
                 # Embed
@@ -85,6 +84,9 @@ def run(notification: dict, model, context=None) -> None:
                 otel.stage_duration.record((time.monotonic() - t0) * 1000, {"stage": "embed"})
 
                 conn.commit()  # persist message + embedding before LLM call
+                # NDR → email_bounced event; never raises. After the commit so a
+                # rolled-back insert (Pub/Sub retry) cannot publish it twice.
+                bounce.maybe_publish(msg, graph_client)
 
                 # Retrieve neighbors
                 t0 = time.monotonic()

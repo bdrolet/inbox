@@ -85,3 +85,57 @@ def test_body_without_any_foreign_address_returns_none():
         "body": "Your message could not be delivered.",
     }
     assert bounces.extract(msg, []) is None
+
+
+def test_exchange_delivery_delayed_is_not_a_bounce():
+    msg, atts = _load("ndr_exchange_delayed.json")
+    assert bounces.extract(msg, atts) is None
+
+
+def test_gmail_delay_notification_is_not_a_bounce():
+    msg, atts = _load("ndr_gmail_delayed.json")
+    assert bounces.extract(msg, atts) is None
+
+
+def test_body_only_delay_notice_is_not_a_bounce():
+    msg = {
+        "sender": "postmaster@drolet.ai",
+        "to": ["ben@drolet.ai"],
+        "cc": [],
+        "subject": "Undeliverable: Delivery delayed: hi",
+        "body": "Delivery is delayed to these recipients or groups: cto@acme.com",
+    }
+    assert bounces.extract(msg, []) is None
+
+
+def test_dsn_keeps_only_failed_recipient_groups():
+    dsn = (
+        b"Reporting-MTA: dns;x\n\n"
+        b"Final-Recipient: rfc822;slow@x.com\nAction: delayed\nStatus: 4.4.7\n\n"
+        b"Final-Recipient: rfc822;gone@x.com\nAction: FAILED\nStatus: 5.1.1\n"
+        b"Diagnostic-Code: smtp; 550 5.1.1 User unknown\n"
+    )
+    b = bounces.extract(*_dsn_msg_atts(dsn))
+    assert b.failed_recipients == ["gone@x.com"]
+    assert b.status == "5.1.1"
+
+
+def test_dsn_without_action_keeps_only_permanent_status():
+    dsn = (
+        b"Reporting-MTA: dns;x\n\n"
+        b"Final-Recipient: rfc822;slow@x.com\nStatus: 4.2.2\n\n"
+        b"Final-Recipient: rfc822;gone@x.com\nStatus: 5.1.1\n"
+    )
+    b = bounces.extract(*_dsn_msg_atts(dsn))
+    assert b.failed_recipients == ["gone@x.com"]
+
+
+def test_body_fallback_skips_system_addresses():
+    msg = {
+        "sender": "mailer-daemon@googlemail.com",
+        "to": ["ben@drolet.ai"],
+        "cc": [],
+        "subject": "Delivery Status Notification (Failure)",
+        "body": "From mailer-daemon@google.com: delivery to founder@startup.io failed",
+    }
+    assert bounces.extract(msg, []).failed_recipients == ["founder@startup.io"]
