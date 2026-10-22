@@ -91,3 +91,25 @@ def test_reply_missing_message_raises_lookup_error(monkeypatch):
     )
     with pytest.raises(LookupError):
         _client().reply("gone", comment="hi")
+
+
+def test_reply_with_to_sets_to_recipients(calls):
+    _client().reply("m1", comment="hi", to=["cto@example.com"])
+    _, payload = calls["post"][0]
+    assert payload["message"]["toRecipients"] == [{"emailAddress": {"address": "cto@example.com"}}]
+    assert "ccRecipients" not in payload["message"]
+
+
+def test_reply_with_to_and_from_merges_message_block(calls):
+    _client().reply(
+        "m1", comment="hi", from_address="ben@drolet.ai", to=["a@x.com"], cc=["b@x.com"]
+    )
+    _, payload = calls["post"][0]
+    assert payload["message"]["from"] == {"emailAddress": {"address": "ben@drolet.ai"}}
+    assert payload["message"]["toRecipients"][0]["emailAddress"]["address"] == "a@x.com"
+    assert payload["message"]["ccRecipients"][0]["emailAddress"]["address"] == "b@x.com"
+
+
+def test_reply_without_to_leaves_payload_unchanged(calls):
+    _client().reply("m1", comment="hi")
+    assert calls["post"][0][1] == {"comment": "hi"}

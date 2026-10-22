@@ -102,3 +102,14 @@ def test_normalize_meeting_message_false_without_odata_type():
         }
     )
     assert ingestion.normalize(email2)["has_attachments"] is False
+
+
+def test_normalize_carries_conversation_id():
+    from clients.azure.email import Email
+
+    base = {"id": "AAMk1", "subject": "s", "from": {}, "toRecipients": [], "ccRecipients": []}
+    base["body"] = {}
+    assert ingestion.normalize(Email({**base, "conversationId": "AAQk-c1"}))["conversation_id"] == (
+        "AAQk-c1"
+    )
+    assert ingestion.normalize(Email(base))["conversation_id"] is None

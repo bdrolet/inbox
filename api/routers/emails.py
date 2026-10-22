@@ -126,6 +126,8 @@ class ReplyRequest(BaseModel):
     body: str  # sent as Graph's `comment`: placed above the quoted original
     reply_all: bool = False
     send: bool = True  # false leaves a threaded draft for review
+    to: list[str] | None = None  # explicit To; mutually exclusive with reply_all
+    cc: list[str] | None = None
     from_: FromMailbox | None = Field(default=None, alias="from")
 
 
@@ -142,6 +144,7 @@ class DraftResponse(BaseModel):
 
 class StatusResponse(BaseModel):
     status: str
+    id: str | None = None
 
 
 def _from_parts(from_: FromMailbox | None) -> tuple[str | None, bool]:
@@ -272,7 +275,11 @@ def create_draft(req: CreateDraftRequest) -> DraftResponse:
     return DraftResponse(id=created.get("id"), web_link=created.get("webLink"))
 
 
-@router.post("/drafts/{draft_id}/attachments", response_model=StatusResponse)
+@router.post(
+    "/drafts/{draft_id}/attachments",
+    response_model=StatusResponse,
+    response_model_exclude_none=True,
+)
 def add_attachment(draft_id: str, req: AddAttachmentRequest) -> StatusResponse:
     client = _get_client()
     addr, shared = _from_parts(req.from_)
@@ -289,16 +296,20 @@ def add_attachment(draft_id: str, req: AddAttachmentRequest) -> StatusResponse:
     return StatusResponse(status="attached")
 
 
-@router.post("/drafts/{draft_id}/send", response_model=StatusResponse)
+@router.post(
+    "/drafts/{draft_id}/send", response_model=StatusResponse, response_model_exclude_none=True
+)
 def send_draft(draft_id: str, req: SendDraftRequest | None = None) -> StatusResponse:
     client = _get_client()
     addr, shared = _from_parts(req.from_ if req else None)
-    _call_graph(client.send_draft, draft_id, from_address=addr, from_shared=shared)
-    return StatusResponse(status="sent")
+    sent_id = _call_graph(client.send_draft, draft_id, from_address=addr, from_shared=shared)
+    return StatusResponse(status="sent", id=sent_id)
 
 
 # `:path` because Graph ids can contain "/", which arrives decoded from %2F
-@router.delete("/drafts/{draft_id:path}", response_model=StatusResponse)
+@router.delete(
+    "/drafts/{draft_id:path}", response_model=StatusResponse, response_model_exclude_none=True
+)
 def delete_draft(draft_id: str, req: DeleteDraftRequest | None = None) -> StatusResponse:
     client = _get_client()
     addr, shared = _from_parts(req.from_ if req else None)
@@ -309,6 +320,8 @@ def delete_draft(draft_id: str, req: DeleteDraftRequest | None = None) -> Status
 # `:path` because Graph ids can contain "/", which arrives decoded from %2F
 @router.post("/{message_id:path}/reply", response_model=ReplyResponse)
 def reply(message_id: str, req: ReplyRequest) -> ReplyResponse:
+    if req.reply_all and req.to:
+        raise HTTPException(status_code=400, detail="reply_all and to are mutually exclusive")
     client = _get_client()
     addr, shared = _from_parts(req.from_)
     draft = _call_graph(
@@ -317,6 +330,8 @@ def reply(message_id: str, req: ReplyRequest) -> ReplyResponse:
         comment=req.body,
         reply_all=req.reply_all,
         send=req.send,
+        to=req.to,
+        cc=req.cc,
         from_address=addr,
         from_shared=shared,
     )
@@ -325,7 +340,7 @@ def reply(message_id: str, req: ReplyRequest) -> ReplyResponse:
     return ReplyResponse(status="drafted", id=draft.get("id"), web_link=draft.get("webLink"))
 
 
-@router.post("/send", response_model=StatusResponse)
+@router.post("/send", response_model=StatusResponse, response_model_exclude_none=True)
 def send_message(req: SendMessageRequest) -> StatusResponse:
     client = _get_client()
     addr, shared = _from_parts(req.from_)

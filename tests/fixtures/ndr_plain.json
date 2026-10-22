@@ -1,0 +1,24 @@
+{
+  "id": "AAMk-ndr_plain",
+  "conversationId": "AAQk-ndr_plain",
+  "subject": "Mail delivery failed: returning message to sender",
+  "from": {
+    "emailAddress": {
+      "name": "Mail Delivery System",
+      "address": "bounce@relay.example"
+    }
+  },
+  "toRecipients": [
+    {
+      "emailAddress": {
+        "address": "ben@drolet.ai"
+      }
+    }
+  ],
+  "body": {
+    "contentType": "text",
+    "content": "This message was created automatically by mail delivery software.\nA message that you sent could not be delivered to vp@health.co."
+  },
+  "hasAttachments": false,
+  "attachments": []
+}

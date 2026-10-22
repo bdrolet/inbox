@@ -183,9 +183,36 @@ def test_reply_sends_by_default(monkeypatch):
         "comment": "Sounds great",
         "reply_all": False,
         "send": True,
+        "to": None,
+        "cc": None,
         "from_address": "ben@drolet.ai",
         "from_shared": False,
     }
+
+
+def test_reply_passes_to_and_cc(monkeypatch):
+    fake = _use_client(monkeypatch, _FakeReplyClient())
+    resp = client.post(
+        "/emails/m1/reply", json={"body": "hi", "to": ["a@x.com"], "cc": ["b@x.com"]}
+    )
+    assert resp.status_code == 200 and resp.json()["status"] == "sent"
+    assert fake.kwargs["to"] == ["a@x.com"] and fake.kwargs["cc"] == ["b@x.com"]
+
+
+def test_reply_omitting_to_sends_none(monkeypatch):
+    fake = _use_client(monkeypatch, _FakeReplyClient())
+    assert client.post("/emails/m1/reply", json={"body": "hi"}).status_code == 200
+    assert fake.kwargs["to"] is None and fake.kwargs["cc"] is None
+
+
+def test_reply_all_with_to_is_400(monkeypatch):
+    fake = _use_client(monkeypatch, _FakeReplyClient())
+    resp = client.post(
+        "/emails/m1/reply", json={"body": "hi", "reply_all": True, "to": ["a@x.com"]}
+    )
+    assert resp.status_code == 400
+    assert resp.json() == {"detail": "reply_all and to are mutually exclusive"}
+    assert fake.kwargs is None  # Graph never called
 
 
 def test_reply_draft_returns_id_and_link(monkeypatch):
@@ -308,3 +335,60 @@ def test_blank_default_from_address_sends_from_primary(monkeypatch):
     fake = _use_client(monkeypatch, _FakeReplyClient())
     client.post("/emails/m1/reply", json={"body": "hi"})
     assert fake.kwargs["from_address"] is None
+
+
+def test_send_draft_returns_id(monkeypatch):
+    class _FakeSendClient:
+        def send_draft(self, message_id, *, from_address=None, from_shared=False):
+            return message_id
+
+    _use_client(monkeypatch, _FakeSendClient())
+    resp = client.post("/emails/drafts/d1/send")
+    assert resp.status_code == 200
+    assert resp.json() == {"status": "sent", "id": "d1"}
+
+
+class _SearchGraph:
+    def authenticate_headless(self):
+        return True
+
+    def search_emails(self, query, mailbox="me", limit=25):
+        return [
+            Email({"id": "d1", "subject": "draft", "isDraft": True}),
+            Email({"id": "s1", "subject": "sent", "isDraft": False}),
+            Email({"id": "u1", "subject": "unknown"}),
+        ]
+
+    def get_member_groups(self):
+        return []
+
+
+def test_search_graph_results_carry_is_draft(monkeypatch):
+    import clients.azure
+
+    monkeypatch.setattr(clients.azure, "GraphEmailClient", _SearchGraph)
+    resp = client.post("/search", json={"query": "x", "mailboxes": ["me"]})
+    assert resp.status_code == 200
+    by_id = {r["message_id"]: r for r in resp.json()["results"]}
+    assert by_id["d1"]["is_draft"] is True
+    assert by_id["s1"]["is_draft"] is False
+    assert by_id["u1"]["is_draft"] is None
+
+
+def test_search_db_results_have_null_is_draft(monkeypatch):
+    import sys
+    import types
+
+    class _Conn:
+        def close(self):
+            pass
+
+    fake_db = types.ModuleType("clients.db")
+    fake_db.get_conn = lambda: _Conn()
+    fake_repo = types.ModuleType("repo.messages")
+    fake_repo.search_messages = lambda conn, q, limit=25: [{"id": 7, "subject": "s"}]
+    monkeypatch.setitem(sys.modules, "clients.db", fake_db)
+    monkeypatch.setitem(sys.modules, "repo.messages", fake_repo)
+    resp = client.post("/search", json={"query": "x", "mode": "db"})
+    assert resp.status_code == 200
+    assert resp.json()["results"][0]["is_draft"] is None

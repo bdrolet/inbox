@@ -1,0 +1,24 @@
+{
+  "id": "AAMk-ndr_gmail_delayed",
+  "conversationId": "AAQk-ndr_gmail_delayed",
+  "subject": "Delivery Status Notification (Delay)",
+  "from": {
+    "emailAddress": {
+      "name": "Mail Delivery Subsystem",
+      "address": "mailer-daemon@googlemail.com"
+    }
+  },
+  "toRecipients": [
+    {
+      "emailAddress": {
+        "address": "ben@drolet.ai"
+      }
+    }
+  ],
+  "body": {
+    "contentType": "text",
+    "content": "Delivery incomplete. There was a temporary problem delivering your message to founder@startup.io. Gmail will retry for 46 more hours."
+  },
+  "hasAttachments": false,
+  "attachments": []
+}

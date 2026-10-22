@@ -1,0 +1,30 @@
+{
+  "id": "AAMk-ndr_exchange_delayed",
+  "conversationId": "AAQk-ndr_exchange_delayed",
+  "subject": "Delivery delayed: Production-readiness audit for Acme",
+  "from": {
+    "emailAddress": {
+      "name": "Microsoft Outlook",
+      "address": "postmaster@drolet.ai"
+    }
+  },
+  "toRecipients": [
+    {
+      "emailAddress": {
+        "address": "ben@drolet.ai"
+      }
+    }
+  ],
+  "body": {
+    "contentType": "text",
+    "content": "Delivery is delayed to these recipients or groups: cto@acme.com"
+  },
+  "hasAttachments": true,
+  "attachments": [
+    {
+      "contentType": "message/delivery-status",
+      "name": "Delivery Status Notification.dsn",
+      "contentBytes": "UmVwb3J0aW5nLU1UQTogZG5zO21haWwuZHJvbGV0LmFpCgpGaW5hbC1SZWNpcGllbnQ6IHJmYzgyMjtjdG9AYWNtZS5jb20KQWN0aW9uOiBkZWxheWVkClN0YXR1czogNC40LjcKRGlhZ25vc3RpYy1Db2RlOiBzbXRwOzQwMCA0LjQuNyBNZXNzYWdlIGRlbGF5ZWQK"
+    }
+  ]
+}

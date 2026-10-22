@@ -13,6 +13,7 @@ from clients import people_api
 from clients.claude import classify
 from clients.db import get_conn
 from clients.graph import get_graph_client
+from handlers import bounce
 from handlers.actions.dispatch import dispatch
 from models.types import Category
 from repo import classifications, messages
@@ -83,6 +84,9 @@ def run(notification: dict, model, context=None) -> None:
                 otel.stage_duration.record((time.monotonic() - t0) * 1000, {"stage": "embed"})
 
                 conn.commit()  # persist message + embedding before LLM call
+                # NDR → email_bounced event; never raises. After the commit so a
+                # rolled-back insert (Pub/Sub retry) cannot publish it twice.
+                bounce.maybe_publish(msg, graph_client)
 
                 # Retrieve neighbors
                 t0 = time.monotonic()

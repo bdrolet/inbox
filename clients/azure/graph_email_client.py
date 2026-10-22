@@ -437,7 +437,7 @@ class GraphEmailClient:
 
         endpoint = f"{self._read_base(mailbox)}/messages/{email_id}"
         params = {
-            "$select": "id,subject,from,toRecipients,ccRecipients,bccRecipients,receivedDateTime,sentDateTime,body,bodyPreview,isRead,hasAttachments,attachments,webLink,categories,conversationId"
+            "$select": "id,subject,from,toRecipients,ccRecipients,bccRecipients,receivedDateTime,sentDateTime,body,bodyPreview,isRead,hasAttachments,attachments,webLink,categories,conversationId,isDraft"
         }
         response = requests.get(endpoint, headers=self.get_headers(immutable=True), params=params)
         if response.status_code == 404:
@@ -656,7 +656,8 @@ class GraphEmailClient:
     ) -> dict:
         """Create a draft message saved to Drafts (not sent). Requires Mail.ReadWrite.
 
-        Returns the created Graph message dict (includes `id` and `webLink`).
+        Returns the created Graph message dict (includes `id` and `webLink`). The id is
+        an immutable id, so it stays valid after the draft moves to Sent Items.
         """
         base = self._mailbox_base(from_address, from_shared)
         message = self._build_message(
@@ -671,7 +672,7 @@ class GraphEmailClient:
         )
         response = requests.post(
             f"{self.graph_endpoint}{base}/messages",
-            headers=self.get_headers(),
+            headers=self.get_headers(immutable=True),
             json=message,
         )
         response.raise_for_status()
@@ -730,8 +731,8 @@ class GraphEmailClient:
         *,
         from_address: str | None = None,
         from_shared: bool = False,
-    ) -> None:
-        """Send an existing draft by id. Requires Mail.Send."""
+    ) -> str:
+        """Send an existing draft by id and return that id. Requires Mail.Send."""
         base = self._mailbox_base(from_address, from_shared)
         response = requests.post(
             f"{self.graph_endpoint}{base}/messages/{message_id}/send",
@@ -739,6 +740,7 @@ class GraphEmailClient:
         )
         response.raise_for_status()
         logger.info("Sent draft %s (base=%s)", message_id, base)
+        return message_id
 
     def delete_draft(
         self,
@@ -822,6 +824,8 @@ class GraphEmailClient:
         send: bool = True,
         from_address: str | None = None,
         from_shared: bool = False,
+        to: list[str] | None = None,
+        cc: list[str] | None = None,
     ) -> dict | None:
         """Reply to an existing message, threaded. Requires Mail.Send (send) or
         Mail.ReadWrite (draft).
@@ -830,6 +834,10 @@ class GraphEmailClient:
         (send=False) actions with `comment`, so Graph addresses the reply, sets
         the threading headers, and keeps the quoted history below the comment —
         unlike composing a fresh message with a matching subject.
+
+        Recipients can be overridden with `to` / `cc`. Without `to`, Graph
+        addresses the reply itself, so a reply to a Sent Items message goes back
+        to the mailbox owner rather than the original recipients.
 
         Returns None when sent; the draft dict (`id`, `webLink`) when send=False.
 
@@ -842,8 +850,15 @@ class GraphEmailClient:
         if not send:
             action = "create" + action[0].upper() + action[1:]
         payload: dict = {"comment": comment}
+        message: dict = {}
         if from_address and not from_shared:
-            payload["message"] = {"from": {"emailAddress": {"address": from_address}}}
+            message["from"] = {"emailAddress": {"address": from_address}}
+        if to:
+            message["toRecipients"] = [{"emailAddress": {"address": a}} for a in to]
+        if cc:
+            message["ccRecipients"] = [{"emailAddress": {"address": a}} for a in cc]
+        if message:
+            payload["message"] = message
         response = requests.post(
             f"{self.graph_endpoint}{base}/messages/{quote(message_id, safe='')}/{action}",
             headers=self.get_headers(),
@@ -896,7 +911,7 @@ class GraphEmailClient:
         params = {
             "$search": f'"{query}"',
             "$top": str(limit),
-            "$select": "id,subject,from,toRecipients,receivedDateTime,bodyPreview,webLink",
+            "$select": "id,subject,from,toRecipients,receivedDateTime,bodyPreview,webLink,isDraft",
         }
         try:
             response = requests.get(endpoint, headers=self.get_headers(), params=params)
@@ -1146,6 +1161,35 @@ class GraphEmailClient:
             return best[1] if best else None
         except (requests.exceptions.RequestException, ValueError, TypeError):
             logger.warning("latest_reply_from_me failed for conversation %s", conversation_id)
+            return None
+
+    def sent_message_id_in_conversation(self, conversation_id: str) -> str | None:
+        """Immutable id of the earliest Sent Items message in the conversation
+        (by sentDateTime), or None if there is none or on any failure."""
+        try:
+            resp = requests.get(
+                f"{self.graph_endpoint}/me/mailFolders/sentitems/messages",
+                headers=self.get_headers(immutable=True),
+                params={
+                    "$filter": f"conversationId eq '{conversation_id}'",
+                    "$select": "id,sentDateTime",
+                    "$top": "25",
+                },
+            )
+            resp.raise_for_status()
+            best: tuple[datetime, str] | None = None
+            for m in resp.json().get("value", []):
+                sent = m.get("sentDateTime")
+                if not sent or not m.get("id"):
+                    continue
+                sent_dt = datetime.fromisoformat(sent.replace("Z", "+00:00"))
+                if best is None or sent_dt < best[0]:
+                    best = (sent_dt, m["id"])
+            return best[1] if best else None
+        except (requests.exceptions.RequestException, ValueError, TypeError):
+            logger.warning(
+                "sent_message_id_in_conversation failed for conversation %s", conversation_id
+            )
             return None
 
     def get_web_link(self, external_id: str) -> str | None:

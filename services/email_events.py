@@ -2,8 +2,9 @@
 
 One email_classified event per processed email (every category — the tasks
 repo, github.com/bdrolet/tasks, owns the policy for which become Asana tasks)
-plus label_applied feedback events. Tasks' models/events.py mirrors these
-payloads exactly.
+plus label_applied feedback events and email_bounced events (one per inbound
+non-delivery report, built from services.bounces; consumed by the people
+repo). Tasks' models/events.py mirrors these payloads exactly.
 
 Calendar invites are not inbox's concern: the schedule repo
 (github.com/bdrolet/schedule) owns all calendar logic and reads `.ics`
@@ -20,6 +21,7 @@ import clients.otel as otel
 from clients import pubsub
 from models.message import Message
 from models.types import Classification
+from services.bounces import Bounce
 from services.links import redirector_url
 
 logger = logging.getLogger(__name__)
@@ -103,4 +105,23 @@ def email_sent_payload(email) -> dict:
         "to": _addrs(email.to_recipients),
         "cc": _addrs(email.cc_recipients),
         "subject": email.subject or "",
+    }
+
+
+def build_bounced_event(
+    msg: Message, bounce: Bounce, original_graph_message_id: str | None
+) -> dict:
+    """email_bounced (spec §10.2): a non-delivery report for a message we sent."""
+    received = msg["received_at"]
+    return {
+        "event": "email_bounced",
+        "message_id": str(msg.get("id") or ""),
+        "graph_message_id": msg["external_id"],
+        "conversation_id": msg.get("conversation_id"),
+        "received_at": received.isoformat() if isinstance(received, datetime) else str(received),
+        "failed_recipients": bounce.failed_recipients,
+        "status": bounce.status,
+        "diagnostic": bounce.diagnostic,
+        "original_subject": bounce.original_subject,
+        "original_graph_message_id": original_graph_message_id,
     }
