@@ -126,8 +126,11 @@ request names another alias. People counts a brief only from that address. Say s
   the source message. A detail you'd have to guess (a time, a price, a
   commitment on Ben's behalf) stays out of the body and goes in the report's
   `Assumptions` line. Never commit Ben to something the request didn't.
-- **Format**: `body_type: "Text"` unless the content needs a link list or
-  table, in which case use `"HTML"`.
+- **Format**: `body_type: "Text"` with blank lines between paragraphs,
+  unless the content needs a link list or table, in which case write the
+  markup and use `"HTML"`. Both drafts and replies keep the line breaks of a
+  Text body; never flatten a body onto one line to fit a shell command —
+  build the JSON with `json.dumps` and post it from a file.
 
 ## 5. Draft
 

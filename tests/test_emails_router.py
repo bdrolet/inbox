@@ -180,7 +180,7 @@ def test_reply_sends_by_default(monkeypatch):
     assert resp.json()["status"] == "sent"
     assert fake.kwargs == {
         "message_id": "m1",
-        "comment": "Sounds great",
+        "comment": "<p>Sounds great</p>",
         "reply_all": False,
         "send": True,
         "to": None,
@@ -188,6 +188,29 @@ def test_reply_sends_by_default(monkeypatch):
         "from_address": "ben@drolet.ai",
         "from_shared": False,
     }
+
+
+def test_reply_text_body_keeps_its_line_breaks(monkeypatch):
+    # Graph renders a reply `comment` as HTML, so a plain-text body would
+    # otherwise collapse into one paragraph.
+    fake = _use_client(monkeypatch, _FakeReplyClient())
+    client.post("/emails/m1/reply", json={"body": "Hi Ann,\n\nSee you Thursday.\nBen"})
+    assert fake.kwargs["comment"] == "<p>Hi Ann,</p><p>See you Thursday.<br>Ben</p>"
+
+
+def test_reply_html_body_passes_through(monkeypatch):
+    fake = _use_client(monkeypatch, _FakeReplyClient())
+    client.post(
+        "/emails/m1/reply",
+        json={"body": "<p>Hi</p><ol><li>one</li></ol>", "body_type": "HTML"},
+    )
+    assert fake.kwargs["comment"] == "<p>Hi</p><ol><li>one</li></ol>"
+
+
+def test_reply_rejects_unknown_body_type(monkeypatch):
+    fake = _use_client(monkeypatch, _FakeReplyClient())
+    resp = client.post("/emails/m1/reply", json={"body": "hi", "body_type": "Markdown"})
+    assert resp.status_code == 422 and fake.kwargs is None
 
 
 def test_reply_passes_to_and_cc(monkeypatch):
