@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 import services.fetching as fetching
 from clients.azure.graph_email_client import NotADraftError
+from services.html_body import text_to_html
 
 logger = logging.getLogger(__name__)
 
@@ -124,6 +125,9 @@ class DeleteDraftRequest(BaseModel):
 class ReplyRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
     body: str  # sent as Graph's `comment`: placed above the quoted original
+    # Graph renders `comment` as HTML, so a Text body is converted (paragraphs,
+    # line breaks, escaping) before it goes out; HTML is passed through as is.
+    body_type: Literal["Text", "HTML"] = "Text"
     reply_all: bool = False
     send: bool = True  # false leaves a threaded draft for review
     to: list[str] | None = None  # explicit To; mutually exclusive with reply_all
@@ -324,10 +328,11 @@ def reply(message_id: str, req: ReplyRequest) -> ReplyResponse:
         raise HTTPException(status_code=400, detail="reply_all and to are mutually exclusive")
     client = _get_client()
     addr, shared = _from_parts(req.from_)
+    comment = req.body if req.body_type == "HTML" else text_to_html(req.body)
     draft = _call_graph(
         client.reply,
         message_id,
-        comment=req.body,
+        comment=comment,
         reply_all=req.reply_all,
         send=req.send,
         to=req.to,

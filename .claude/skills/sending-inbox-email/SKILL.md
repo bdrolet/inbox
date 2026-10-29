@@ -102,6 +102,14 @@ returns `{"status":"drafted","id":"...","web_link":"..."}` — send it with
 `/emails/drafts/{id}/send` below. `from` follows the identity table below;
 reply from the address the user used on the thread.
 
+`body` is plain text by default: blank lines separate paragraphs, a single
+newline is a line break, and `<`/`&` are escaped. Graph renders a reply as
+HTML, so the API does that conversion; without it the body arrives as one
+run-on paragraph. Pass `"body_type":"HTML"` only when the body is already
+markup (`<p>`, `<ol>`, links); it then goes through untouched. Multi-line
+bodies are easiest as a JSON file (`-d @payload.json`) built with
+`json.dumps`, so the newlines survive the shell.
+
 ## Draft, then send (when the user wants to review first)
 
 ```bash
